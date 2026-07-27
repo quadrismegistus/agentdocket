@@ -147,10 +147,21 @@ def _dispatch(name: str, args: dict) -> str:
     conn = store.connect(_db())
     try:
         if name == "docket_post":
-            mid = store.post(conn, _seat(), args["body"],
-                             args.get("to", []) or [], args.get("tag"))
             to = args.get("to") or []
-            return f"posted [{mid}]" + (" -> @" + ", @".join(to) if to else "")
+            unknown = store.unknown_mentions(conn, to)
+            mid = store.post(conn, _seat(), args["body"], to, args.get("tag"))
+            out = f"posted [{mid}]" + (" -> @" + ", @".join(to) if to else "")
+            if unknown:
+                # Surfaced in the tool result rather than logged to stderr,
+                # because the model is the one who can act on it. A mention of a
+                # name that does not exist reaches nobody and normally tells
+                # nobody, which is the silent failure this whole tool opposes.
+                out += (f"\n\nWARNING: {', '.join(repr(u) for u in unknown)} has "
+                        f"never posted, so this reaches nobody by mention. If it "
+                        f"is a typo, post again with the right name.\n"
+                        f"Seats seen so far: "
+                        f"{', '.join(sorted(store.known_seats(conn))) or '(none)'}")
+            return out
         if name == "docket_read":
             msgs = store.read(conn, _seat(),
                               mentions_only=bool(args.get("mentions_only")),

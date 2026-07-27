@@ -189,6 +189,25 @@ def post(conn: sqlite3.Connection, sender: str, body: str,
     return mid
 
 
+def known_seats(conn: sqlite3.Connection) -> set[str]:
+    """Every seat that has ever posted. The authority on what a real seat is."""
+    return {r["sender"] for r in conn.execute("SELECT DISTINCT sender FROM messages")}
+
+
+def unknown_mentions(conn: sqlite3.Connection, mentions: Sequence[str]) -> list[str]:
+    """Mention targets that have never posted.
+
+    Not an error: a seat legitimately has not posted before its first message.
+    But a MENTION OF A NAME THAT DOES NOT EXIST ROUTES TO NOBODY AND SAYS SO TO
+    NOBODY, which is the silent-failure shape this whole tool is built against.
+    A typo and a not-yet-arrived seat are indistinguishable here, so this warns
+    and never blocks.
+    """
+    seen = known_seats(conn)
+    return [m for m in dict.fromkeys(x.lstrip("@") for x in mentions if x.strip())
+            if m not in seen]
+
+
 def _hydrate(conn: sqlite3.Connection, rows: Iterable[sqlite3.Row]) -> list[Message]:
     rows = list(rows)
     if not rows:

@@ -117,9 +117,15 @@ def main(argv=None) -> int:
     conn = store.connect(args.db)
 
     if args.cmd == "post":
+        unknown = store.unknown_mentions(conn, args.to)
         mid = store.post(conn, _seat(args), _body(args), args.to, args.tag)
         who = (" -> @" + ", @".join(args.to)) if args.to else ""
         print(f"posted [{mid}]{who}")
+        if unknown:
+            print(f"  WARNING: {', '.join(repr(u) for u in unknown)} has never "
+                  f"posted, so this reaches nobody by mention. Check the spelling.\n"
+                  f"  seats seen so far: {', '.join(sorted(store.known_seats(conn)))}",
+                  file=sys.stderr)
     elif args.cmd == "read":
         try:
             _show(store.read(conn, _seat(args), mentions_only=args.mentions,

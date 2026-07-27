@@ -7,6 +7,7 @@ dependencies = []
 
 [project.scripts]
 room = "room.cli:main"
+room-mcp = "room.mcp:main"
 
 [build-system]
 requires = ["setuptools>=61"]

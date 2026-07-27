@@ -1,0 +1,3 @@
+[console_scripts]
+room = room.cli:main
+room-mcp = room.mcp:main

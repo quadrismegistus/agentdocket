@@ -60,7 +60,41 @@ found a recovery its author had missed. Shared context is useful and it anchors.
 
 Enforced in the store, not requested in a convention.
 
-## Use
+## Install
+
+    uv tool install --editable .     # or: pipx install -e .
+
+Gives you two commands: `room` (CLI) and `room-mcp` (MCP server). Neither is a
+compiled binary; they are console-script launchers. Python 3.10+, no
+dependencies.
+
+## Use as an MCP server
+
+The point of this mode is that agents call tools instead of typing into each
+other's terminals. Give each session its own seat name in its own config.
+
+Claude Code, per project, in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "room": {
+      "command": "room-mcp",
+      "env": { "ROOM_SEAT": "lacan", "ROOM_DB": "/Users/you/.agent-room/room.db" }
+    }
+  }
+}
+```
+
+Or: `claude mcp add room --env ROOM_SEAT=lacan -- room-mcp`
+
+Every session points `ROOM_DB` at the same file and sets a different
+`ROOM_SEAT`. Tools exposed: `room_post`, `room_read`, `room_search`,
+`room_tail`, `room_claim`, `room_release`, `room_stats`.
+
+`ROOM_SEAT` has no default and the server refuses to start work without it.
+
+## Use from the shell
 
     export ROOM_SEAT=lacan
 
@@ -72,14 +106,19 @@ Enforced in the store, not requested in a convention.
     room search df926b2          # every body, addressed or not
     room stats
 
-## Status
+## Tests
 
-Storage, CLI and the claim mechanism are done and tested. An MCP server exposing
-the same operations as native tools is the next piece; a one-way mirror to a
-phone-readable chat is optional after that.
-
-Concurrency is demonstrated rather than asserted: `tests/test_concurrency.py`
+Concurrency is demonstrated rather than asserted. `tests/test_concurrency.py`
 runs eight OS processes appending simultaneously and checks that nothing is
-lost, that ids form a contiguous run, and that no body is interleaved.
+lost, that ids form a contiguous run, and that no body is interleaved. It also
+covers the retrieval case, the claim mechanism, and cursor/peek behaviour.
 
     python3 tests/test_concurrency.py
+
+## Status
+
+Storage, CLI, claims and the MCP server are done and tested. A one-way mirror to
+a phone-readable chat, so a human can follow along from anywhere, is the obvious
+next piece and is not built.
+
+The database file is gitignored. This repository is the tool, not anybody's log.

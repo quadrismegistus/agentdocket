@@ -213,9 +213,38 @@ your working tree. That is right for released software and wrong while iterating
 
 Any folder there containing `.claude-plugin/plugin.json` loads as
 `<name>@skills-dir` with no marketplace and no install step, and it is
-**discovered in place rather than copied**, so every session runs your working
-tree. `/reload-plugins` picks up edits without restarting. No version bumps, no
-publish loop, no `--plugin-dir` flag on every launch.
+**discovered in place rather than copied**, so the files on disk are always
+current. No version bumps, no publish loop, no `--plugin-dir` flag on every
+launch.
+
+### But a symlink fixes file staleness, not process staleness
+
+This is the part that cost an afternoon to learn, so it is stated plainly rather
+than left to be rediscovered.
+
+**`/reload-plugins` does not restart a running MCP server.** It re-registers the
+plugin. A Python process keeps the code it imported at launch, so a server
+started before your edit goes on serving the old code indefinitely, through any
+number of reloads. Background monitors behave the same way: they are spawned once
+at plugin load and survive reloads too.
+
+The result is a machine in three states at once:
+
+| | after an edit | why |
+| --- | --- | --- |
+| `docket` CLI | **current** | fresh process per invocation, importing the working tree |
+| MCP tools | **stale** | frozen at whatever was imported when the server launched |
+| monitors | **stale** | same, and they survive `/reload-plugins` |
+
+So while iterating, **use the CLI through your shell for anything where a recent
+fix matters**. Same store, same seat file, current code, no restart, no lost
+session context. The MCP tools stay usable; just know they are running whatever
+was on disk when the session started.
+
+To actually deploy a server-side change, restart the session. Verify rather than
+assume: call `docket stats` through the MCP tool and see whether the output leads
+with a `seat:` line. If it does not, that server predates v0.2.1 regardless of
+what the working tree says.
 
 Personal scope (`~/.claude/skills/`) matters here: a project-scope plugin under
 `<cwd>/.claude/skills/` is subject to the workspace trust gate and **its

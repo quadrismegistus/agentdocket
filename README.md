@@ -1,7 +1,12 @@
 # agentdocket
 
-A shared, append-only log for coordinating several Claude Code sessions working
-on one project. SQLite, standard library only, nothing leaves the machine.
+A shared, append-only docket for coordinating several coding agents working on
+one project. Total order, full-text search over everything, and independence
+claims that are enforced rather than requested.
+
+SQLite and the Python standard library, nothing else. No server, no account, no
+third-party service: the store is a file you own, and agents on other machines
+reach it over your own ssh.
 
 ## Why
 
@@ -132,6 +137,64 @@ Tools exposed: `docket_post`, `docket_read`, `docket_search`, `docket_tail`,
 Set `DOCKET_DB` if you want the store somewhere other than
 `~/.agentdocket/docket.db`. Every session must point at the same file.
 
+## Agents on more than one machine
+
+MCP speaks JSON-RPC over stdin and stdout, and `ssh` is a pipe to a remote
+process, so an agent on one machine can use a docket on another with no extra
+software and no open ports. One machine owns the store; the others reach it.
+
+```json
+{
+  "mcpServers": {
+    "docket": {
+      "command": "ssh",
+      "args": ["-T", "-q", "-o", "BatchMode=yes",
+               "you@store-machine",
+               "DOCKET_SEAT=malign /Users/you/.local/bin/docket-mcp"]
+    }
+  }
+}
+```
+
+Three details, each of which broke the first attempt:
+
+- **Use the absolute path to `docket-mcp`.** A non-interactive ssh session does
+  not source your shell profile, so `~/.local/bin` is not on `PATH` and the bare
+  name does not resolve.
+- **Put `DOCKET_SEAT` in the command.** ssh lands you in the home directory, so
+  the upward search for `.docket-seat` finds nothing relevant.
+- **`-T -q` are load-bearing.** Anything the remote shell prints to stdout lands
+  in the middle of the protocol stream, and the client sees malformed JSON rather
+  than an error. A login banner is enough to break it. Keep non-interactive
+  shells silent.
+
+Measured over Tailscale between two Macs: 620 ms for a cold process spawn plus
+round trip, and a live session holds the connection open, so per-call cost is far
+below that.
+
+**Do not put the database on a shared or network filesystem** so that several
+machines open it directly. SQLite's WAL mode needs shared memory that network
+filesystems do not provide; that route corrupts rather than failing cleanly. One
+owner, everyone else over ssh.
+
+## Developing on it
+
+Installed plugins are pinned: `version` in `.claude-plugin/plugin.json` is the
+update key, so pushing commits without bumping it changes nothing for anyone who
+has installed. That is right for released software and wrong while iterating.
+
+While changing it, load the working copy directly and skip the publish loop
+entirely:
+
+    claude --plugin-dir /path/to/agentdocket
+
+Then `/reload-plugins` picks up edits without a restart. To publish, bump
+`version` and push; users get it on `/plugin marketplace update`.
+
+If you install the plugin *and* run `claude mcp add`, you will have two servers
+registered under different names writing to the same store. Harmless, confusing.
+Pick one.
+
 ## Use from the shell
 
     export DOCKET_SEAT=lacan
@@ -155,8 +218,16 @@ covers the retrieval case, the claim mechanism, and cursor/peek behaviour.
 
 ## Status
 
-Storage, CLI, claims and the MCP server are done and tested. A one-way mirror to
-a phone-readable chat, so a human can follow along from anywhere, is the obvious
-next piece and is not built.
+Storage, CLI, claims, the MCP server, the Claude Code plugin and cross-machine
+access over ssh are built and tested. Cross-machine was verified end to end
+between two Macs over Tailscale, not just in principle.
 
-The database file is gitignored. This repository is the tool, not anybody's log.
+What is **not** built: a one-way mirror to a phone-readable chat, so a human can
+follow along from anywhere.
+
+What is **not** proven: behaviour under sustained real load. The concurrency test
+hammers it with eight processes, but the tool has not yet carried a full working
+day of traffic between live agents.
+
+The database file is gitignored. This repository is the tool, not anybody's
+docket.

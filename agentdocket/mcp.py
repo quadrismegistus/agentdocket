@@ -1,4 +1,4 @@
-"""MCP stdio server exposing the room as native tools.
+"""MCP stdio server exposing the docket as native tools.
 
 Run it from an agent's MCP config; it speaks JSON-RPC 2.0 over stdin/stdout.
 Written against the standard library on purpose: this gets installed into other
@@ -10,11 +10,11 @@ and nothing else. Every diagnostic goes to stderr. A stray print() here does not
 produce a warning, it produces a client that cannot parse the stream and a
 server that appears to hang.
 
-Seat identity comes from $ROOM_SEAT, set per session in the MCP config, e.g.
+Seat identity comes from $DOCKET_SEAT, set per session in the MCP config, e.g.
 
-    {"mcpServers": {"room": {
-        "command": "room-mcp",
-        "env": {"ROOM_SEAT": "lacan"}}}}
+    {"mcpServers": {"docket": {
+        "command": "docket-mcp",
+        "env": {"DOCKET_SEAT": "lacan"}}}}
 
 It is not inferred from anything. A server that guesses which seat it is speaks
 in someone else's name.
@@ -30,18 +30,18 @@ from typing import Any
 from . import store
 
 PROTOCOL_DEFAULT = "2025-06-18"
-SERVER_INFO = {"name": "room", "version": "0.1.0"}
+SERVER_INFO = {"name": "agentdocket", "version": "0.1.0"}
 
 
 def _log(msg: str) -> None:
-    print(f"[room-mcp] {msg}", file=sys.stderr, flush=True)
+    print(f"[docket-mcp] {msg}", file=sys.stderr, flush=True)
 
 
 def _seat() -> str:
-    seat = os.environ.get("ROOM_SEAT", "").lstrip("@").strip()
+    seat = os.environ.get("DOCKET_SEAT", "").lstrip("@").strip()
     if not seat:
         raise RuntimeError(
-            "ROOM_SEAT is not set. Set it in this server's MCP config env block. "
+            "DOCKET_SEAT is not set. Set it in this server's MCP config env block. "
             "It is deliberately not inferred: a guessed identity signs messages "
             "as somebody else."
         )
@@ -49,14 +49,14 @@ def _seat() -> str:
 
 
 def _db() -> str:
-    return os.environ.get("ROOM_DB", store.DEFAULT_DB)
+    return os.environ.get("DOCKET_DB", store.DEFAULT_DB)
 
 
 TOOLS: list[dict[str, Any]] = [
     {
-        "name": "room_post",
+        "name": "docket_post",
         "description": (
-            "Append a message to the shared room log. Use `to` to @mention seats "
+            "Append a message to the shared docket. Use `to` to @mention seats "
             "whose response you need; everyone can read everything regardless, so "
             "mentions are routing, not access control. Tag DECISION/RESULT/STATUS/"
             "QUESTION when the message is one of those, so it can be found later."
@@ -74,7 +74,7 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "room_read",
+        "name": "docket_read",
         "description": (
             "Messages posted since you last read. Advances your cursor unless "
             "peek is true. If you hold an open independence claim on `topic`, this "
@@ -93,10 +93,10 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "room_search",
+        "name": "docket_search",
         "description": (
             "Full-text search over EVERY message, including ones addressed to no "
-            "one. This is the reason the room exists rather than a mention-only "
+            "one. This is the reason the docket exists rather than a mention-only "
             "channel: the fact you need was often written down by someone who was "
             "not talking to you."
         ),
@@ -108,13 +108,13 @@ TOOLS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "room_tail",
+        "name": "docket_tail",
         "description": "The last N messages regardless of your cursor. For orientation.",
         "inputSchema": {"type": "object",
                         "properties": {"n": {"type": "integer", "default": 20}}},
     },
     {
-        "name": "room_claim",
+        "name": "docket_claim",
         "description": (
             "Open an independence claim on a topic before verifying something "
             "independently. While it is open your reads on that topic are refused, "
@@ -125,13 +125,13 @@ TOOLS: list[dict[str, Any]] = [
                         "required": ["topic"]},
     },
     {
-        "name": "room_release",
+        "name": "docket_release",
         "description": "Close an independence claim, restoring reads on that topic.",
         "inputSchema": {"type": "object", "properties": {"topic": {"type": "string"}},
                         "required": ["topic"]},
     },
     {
-        "name": "room_stats",
+        "name": "docket_stats",
         "description": "Message count, per-sender counts, cursors, and your open claims.",
         "inputSchema": {"type": "object", "properties": {}},
     },
@@ -147,30 +147,30 @@ def _render(msgs) -> str:
 def _dispatch(name: str, args: dict) -> str:
     conn = store.connect(_db())
     try:
-        if name == "room_post":
+        if name == "docket_post":
             mid = store.post(conn, _seat(), args["body"],
                              args.get("to", []) or [], args.get("tag"))
             to = args.get("to") or []
             return f"posted [{mid}]" + (" -> @" + ", @".join(to) if to else "")
-        if name == "room_read":
+        if name == "docket_read":
             msgs = store.read(conn, _seat(),
                               mentions_only=bool(args.get("mentions_only")),
                               limit=args.get("limit"),
                               peek=bool(args.get("peek")),
                               topic=args.get("topic"))
             return _render(msgs)
-        if name == "room_search":
+        if name == "docket_search":
             return _render(store.search(conn, args["query"], args.get("limit", 50)))
-        if name == "room_tail":
+        if name == "docket_tail":
             return _render(store.tail(conn, args.get("n", 20)))
-        if name == "room_claim":
+        if name == "docket_claim":
             store.claim(conn, _seat(), args["topic"])
             return (f"Claimed '{args['topic']}'. Reads on it are refused until you "
                     "release. Post your own finding first.")
-        if name == "room_release":
+        if name == "docket_release":
             store.release(conn, _seat(), args["topic"])
             return f"Released '{args['topic']}'."
-        if name == "room_stats":
+        if name == "docket_stats":
             s = store.stats(conn)
             lines = [f"{s['messages']} messages  {s['first']} .. {s['last']}"]
             lines += [f"  {k:<22} {v}" for k, v in s["by_sender"].items()]
@@ -229,7 +229,7 @@ def _handle(req: dict) -> dict | None:
 
 
 def main() -> int:
-    _log(f"seat={os.environ.get('ROOM_SEAT', '(unset)')} db={_db()}")
+    _log(f"seat={os.environ.get('DOCKET_SEAT', '(unset)')} db={_db()}")
     for line in sys.stdin:
         line = line.strip()
         if not line:

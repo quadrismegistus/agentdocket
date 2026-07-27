@@ -14,7 +14,7 @@ Three properties are asserted, and only the first is obvious:
   1. NOTHING IS LOST     -- every write lands.
   2. NOTHING IS DUPLICATED OR SKIPPED -- ids form a contiguous 1..N run, so the
      total order really is total. If AUTOINCREMENT gapped under contention, the
-     "which came first" question the room exists to answer would be unreliable.
+     "which came first" question the docket exists to answer would be unreliable.
   3. NOTHING IS INTERLEAVED -- each body arrives whole. This is what actually
      breaks with concurrent appends to a plain text file, which is the design
      that was rejected.
@@ -28,7 +28,7 @@ import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from room import store
+from agentdocket import store
 
 WRITERS = 8
 PER_WRITER = 60
@@ -51,7 +51,7 @@ def _hammer(args):
 
 def test_concurrent_processes():
     with tempfile.TemporaryDirectory() as d:
-        path = os.path.join(d, "room.db")
+        path = os.path.join(d, "docket.db")
         store.connect(path).close()  # create schema once, up front
 
         seats = [f"seat{n}" for n in range(WRITERS)]
@@ -94,7 +94,7 @@ def test_concurrent_processes():
 def test_search_finds_unaddressed_message():
     """The df926b2 case: a true note that mentioned nobody must still be findable."""
     with tempfile.TemporaryDirectory() as d:
-        conn = store.connect(os.path.join(d, "room.db"))
+        conn = store.connect(os.path.join(d, "docket.db"))
         store.post(conn, "desktop", "booked df926b2 as mangled predecessor, IGNORE it")
         store.post(conn, "malign", "unrelated chatter", mentions=["lacan"])
         hits = store.search(conn, "df926b2")
@@ -107,7 +107,7 @@ def test_search_finds_unaddressed_message():
 def test_claim_blocks_reading_until_posted():
     """Independence: a seat verifying something cannot read others' answers first."""
     with tempfile.TemporaryDirectory() as d:
-        conn = store.connect(os.path.join(d, "room.db"))
+        conn = store.connect(os.path.join(d, "docket.db"))
         store.post(conn, "malign", "my verdict on the gate: PASS", mentions=["lacan"])
         store.claim(conn, "lacan", "gate-audit")
         try:
@@ -124,7 +124,7 @@ def test_claim_blocks_reading_until_posted():
 
 def test_cursor_advances_and_peek_does_not():
     with tempfile.TemporaryDirectory() as d:
-        conn = store.connect(os.path.join(d, "room.db"))
+        conn = store.connect(os.path.join(d, "docket.db"))
         for i in range(5):
             store.post(conn, "malign", f"message {i}")
         assert len(store.read(conn, "lacan", peek=True)) == 5

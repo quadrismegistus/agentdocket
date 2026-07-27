@@ -1,4 +1,4 @@
-"""SQLite-backed message store for the agent room.
+"""SQLite-backed message store for the agent docket.
 
 Design constraints, in the order they mattered:
 
@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Iterable, Sequence
 
-DEFAULT_DB = os.path.expanduser("~/.agent-room/room.db")
+DEFAULT_DB = os.path.expanduser("~/.agentdocket/docket.db")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (

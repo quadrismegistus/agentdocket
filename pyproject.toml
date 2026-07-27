@@ -1,13 +1,13 @@
 [project]
-name = "room"
+name = "agentdocket"
 version = "0.1.0"
 description = "Shared append-only log for coordinating Claude Code sessions"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
-room = "room.cli:main"
-room-mcp = "room.mcp:main"
+docket = "agentdocket.cli:main"
+docket-mcp = "agentdocket.mcp:main"
 
 [build-system]
 requires = ["setuptools>=61"]

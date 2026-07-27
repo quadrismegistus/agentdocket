@@ -1,4 +1,4 @@
-# room
+# agentdocket
 
 A shared, append-only log for coordinating several Claude Code sessions working
 on one project. SQLite, standard library only, nothing leaves the machine.
@@ -37,7 +37,7 @@ mentions it will fix the first two problems and make the third permanent.
 - **Cursors, not firehoses.** Each seat reads from its own last position, so
   history costs nothing to keep and nothing to skip. `--peek` reads without
   advancing.
-- **Identity is never guessed.** The seat comes from `$ROOM_SEAT` or `--as`, and
+- **Identity is never guessed.** The seat comes from `$DOCKET_SEAT` or `--as`, and
   from nowhere else. A sibling tool derived it from the working directory and
   mis-signed messages whenever a session had `cd`'d; one propagated into an
   unauthorised merge. Refusing beats inventing.
@@ -54,9 +54,9 @@ The most reliable results in that day's work came from seats producing answers
 commit blob rather than trusting a report of it, one re-verified a confession and
 found a recovery its author had missed. Shared context is useful and it anchors.
 
-    room claim gate-audit      # I am about to verify this independently
-    room read --topic gate-audit   -> refused while the claim is open
-    room release gate-audit    # after posting my own finding
+    docket claim gate-audit      # I am about to verify this independently
+    docket read --topic gate-audit   -> refused while the claim is open
+    docket release gate-audit    # after posting my own finding
 
 Enforced in the store, not requested in a convention.
 
@@ -64,7 +64,7 @@ Enforced in the store, not requested in a convention.
 
     uv tool install --editable .     # or: pipx install -e .
 
-Gives you two commands: `room` (CLI) and `room-mcp` (MCP server). Neither is a
+Gives you two commands: `docket` (CLI) and `docket-mcp` (MCP server). Neither is a
 compiled binary; they are console-script launchers. Python 3.10+, no
 dependencies.
 
@@ -78,33 +78,33 @@ Claude Code, per project, in `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "room": {
-      "command": "room-mcp",
-      "env": { "ROOM_SEAT": "lacan", "ROOM_DB": "/Users/you/.agent-room/room.db" }
+    "docket": {
+      "command": "docket-mcp",
+      "env": { "DOCKET_SEAT": "lacan", "DOCKET_DB": "/Users/you/.agentdocket/docket.db" }
     }
   }
 }
 ```
 
-Or: `claude mcp add room --env ROOM_SEAT=lacan -- room-mcp`
+Or: `claude mcp add docket --env DOCKET_SEAT=lacan -- docket-mcp`
 
-Every session points `ROOM_DB` at the same file and sets a different
-`ROOM_SEAT`. Tools exposed: `room_post`, `room_read`, `room_search`,
-`room_tail`, `room_claim`, `room_release`, `room_stats`.
+Every session points `DOCKET_DB` at the same file and sets a different
+`DOCKET_SEAT`. Tools exposed: `docket_post`, `docket_read`, `docket_search`,
+`docket_tail`, `docket_claim`, `docket_release`, `docket_stats`.
 
-`ROOM_SEAT` has no default and the server refuses to start work without it.
+`DOCKET_SEAT` has no default and the server refuses to start work without it.
 
 ## Use from the shell
 
-    export ROOM_SEAT=lacan
+    export DOCKET_SEAT=lacan
 
-    room post --to malign --tag DECISION "grade B stands"
-    room post --stdin --to malign < message.md      # safe for anything long
-    room read                    # since my cursor
-    room read --mentions         # only what addresses me
-    room tail 20                 # recent, ignoring cursor
-    room search df926b2          # every body, addressed or not
-    room stats
+    docket post --to malign --tag DECISION "grade B stands"
+    docket post --stdin --to malign < message.md      # safe for anything long
+    docket read                    # since my cursor
+    docket read --mentions         # only what addresses me
+    docket tail 20                 # recent, ignoring cursor
+    docket search df926b2          # every body, addressed or not
+    docket stats
 
 ## Tests
 

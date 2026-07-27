@@ -1,11 +1,11 @@
-"""Command line for the agent room.
+"""Command line for the agent docket.
 
 Two decisions here are not stylistic, and both are paid for by incidents:
 
 IDENTITY IS NEVER GUESSED. A sibling tool derived the sender from the working
 directory, which mis-signed messages whenever a session was `cd`'d elsewhere,
 and one mis-signed message propagated into an unauthorised merge. So the seat
-comes from --as or $ROOM_SEAT and from nowhere else. If neither is set this
+comes from --as or $DOCKET_SEAT and from nowhere else. If neither is set this
 exits with an error rather than inventing an answer. A wrong signature is worse
 than a refused command.
 
@@ -25,11 +25,11 @@ from . import store
 
 
 def _seat(args) -> str:
-    seat = args.seat or os.environ.get("ROOM_SEAT")
+    seat = args.seat or os.environ.get("DOCKET_SEAT")
     if not seat:
         sys.exit(
             "error: no seat identity.\n"
-            "  Set ROOM_SEAT=<name> or pass --as <name>.\n"
+            "  Set DOCKET_SEAT=<name> or pass --as <name>.\n"
             "  This is not inferred from the working directory on purpose: a\n"
             "  guessed identity signs messages as somebody else."
         )
@@ -57,9 +57,9 @@ def _show(msgs, width: int = 0) -> None:
 
 
 def main(argv=None) -> int:
-    p = argparse.ArgumentParser(prog="room", description="Shared log for coordinating agents.")
+    p = argparse.ArgumentParser(prog="docket", description="Shared log for coordinating agents.")
     p.add_argument("--db", default=store.DEFAULT_DB, help="store path")
-    p.add_argument("--as", dest="seat", help="acting seat (else $ROOM_SEAT)")
+    p.add_argument("--as", dest="seat", help="acting seat (else $DOCKET_SEAT)")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sp = sub.add_parser("post", help="append a message")

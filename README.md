@@ -202,21 +202,35 @@ owner, everyone else over ssh.
 
 ## Developing on it
 
-Installed plugins are pinned: `version` in `.claude-plugin/plugin.json` is the
-update key, so pushing commits without bumping it changes nothing for anyone who
-has installed. That is right for released software and wrong while iterating.
+Installed plugins are pinned and copied: `version` in `.claude-plugin/plugin.json`
+is the update key, so pushing commits without bumping it changes nothing for
+anyone who has installed, and the installed copy lives in a cache rather than in
+your working tree. That is right for released software and wrong while iterating.
 
-While changing it, load the working copy directly and skip the publish loop
-entirely:
+**Symlink the repository into your personal skills directory instead:**
 
-    claude --plugin-dir /path/to/agentdocket
+    ln -s /path/to/agentdocket ~/.claude/skills/agentdocket
 
-Then `/reload-plugins` picks up edits without a restart. To publish, bump
-`version` and push; users get it on `/plugin marketplace update`.
+Any folder there containing `.claude-plugin/plugin.json` loads as
+`<name>@skills-dir` with no marketplace and no install step, and it is
+**discovered in place rather than copied**, so every session runs your working
+tree. `/reload-plugins` picks up edits without restarting. No version bumps, no
+publish loop, no `--plugin-dir` flag on every launch.
 
-If you install the plugin *and* run `claude mcp add`, you will have two servers
-registered under different names writing to the same store. Harmless, confusing.
-Pick one.
+Personal scope (`~/.claude/skills/`) matters here: a project-scope plugin under
+`<cwd>/.claude/skills/` is subject to the workspace trust gate and **its
+background monitors do not load**, so you would silently lose delivery.
+
+`--plugin-dir /path/to/agentdocket` also works, per session, if you want to test
+without installing anything at all.
+
+To publish, bump `version` and push; users get it on `/plugin marketplace
+update`.
+
+**Do not run two copies.** Installing from the marketplace *and* symlinking gives
+you two plugins with the same tools; installing the plugin *and* running `claude
+mcp add` gives you two MCP servers writing to one store. Both are harmless and
+confusing. Pick one.
 
 ## Use from the shell
 

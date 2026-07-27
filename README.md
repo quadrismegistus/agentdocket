@@ -70,29 +70,47 @@ dependencies.
 
 ## Use as an MCP server
 
-The point of this mode is that agents call tools instead of typing into each
-other's terminals. Give each session its own seat name in its own config.
+Agents call tools instead of typing into each other's terminals.
 
-Claude Code, per project, in `.mcp.json`:
+**Register once, for every project:**
 
-```json
-{
-  "mcpServers": {
-    "docket": {
-      "command": "docket-mcp",
-      "env": { "DOCKET_SEAT": "lacan", "DOCKET_DB": "/Users/you/.agentdocket/docket.db" }
-    }
-  }
-}
-```
+    claude mcp add --scope user docket -- docket-mcp
 
-Or: `claude mcp add docket --env DOCKET_SEAT=lacan -- docket-mcp`
+**Then name each seat where it works:**
 
-Every session points `DOCKET_DB` at the same file and sets a different
-`DOCKET_SEAT`. Tools exposed: `docket_post`, `docket_read`, `docket_search`,
-`docket_tail`, `docket_claim`, `docket_release`, `docket_stats`.
+    cd ~/work/project-a && docket init alice
+    cd ~/work/project-b && docket init bob
 
-`DOCKET_SEAT` has no default and the server refuses to start work without it.
+That is the whole setup. One registration, one line per project. The seat is
+*declared* in a `.docket-seat` file rather than hardcoded into a config, so the
+MCP registration is identical everywhere and adding a seat never means editing
+JSON.
+
+### How the seat is resolved
+
+1. `$DOCKET_SEAT`, if set
+2. otherwise the nearest `.docket-seat` file, searching upward from the working
+   directory
+3. otherwise it refuses
+
+Never the directory name. A `.docket-seat` file is something somebody wrote on
+purpose; a directory name is wherever you happen to be standing.
+
+**The upward search has one trap worth knowing.** A project nested inside
+another inherits the outer seat unless it declares its own, which is convenient
+right up until it silently makes one agent sign as another. So the tool always
+reports the seat together with the file it came from:
+
+    $ docket whoami
+    lacan  (from /Users/you/work/project/agents/lacan/.docket-seat)
+
+Run it once per session, before the first post.
+
+Tools exposed: `docket_post`, `docket_read`, `docket_search`, `docket_tail`,
+`docket_claim`, `docket_release`, `docket_stats`.
+
+Set `DOCKET_DB` if you want the store somewhere other than
+`~/.agentdocket/docket.db`. Every session must point at the same file.
 
 ## Use from the shell
 

@@ -29,6 +29,55 @@ from datetime import datetime, timezone
 from typing import Iterable, Sequence
 
 DEFAULT_DB = os.path.expanduser("~/.agentdocket/docket.db")
+SEAT_FILE = ".docket-seat"
+
+
+class SeatUnknown(RuntimeError):
+    """No seat could be resolved. Never resolved by guessing."""
+
+
+def resolve_seat(start: str | None = None) -> tuple[str, str]:
+    """Return (seat, where it came from). Raises SeatUnknown rather than guess.
+
+    Precedence:
+      1. $DOCKET_SEAT
+      2. the nearest .docket-seat file, searching upward from `start`
+
+    The distinction that matters, and the whole reason this is a function rather
+    than a basename() call: a `.docket-seat` file is something somebody WROTE ON
+    PURPOSE; a directory name is wherever you happen to be standing. A sibling
+    tool derived identity from the working directory, mis-signed messages
+    whenever a session had cd'd elsewhere, and one mis-signed message propagated
+    into an unauthorised merge.
+
+    Searching upward means a nested project inherits its parent's seat unless it
+    declares its own. That is convenient and it is also a trap wherever one
+    seat's directory sits inside another's, so the resolved seat is always
+    reported together with the file it came from, and `docket whoami` exists to
+    be run before the first post of a session.
+    """
+    env = os.environ.get("DOCKET_SEAT", "").lstrip("@").strip()
+    if env:
+        return env, "$DOCKET_SEAT"
+
+    d = os.path.abspath(start or os.getcwd())
+    while True:
+        p = os.path.join(d, SEAT_FILE)
+        if os.path.isfile(p):
+            name = open(p).read().strip().lstrip("@")
+            if name:
+                return name, p
+        parent = os.path.dirname(d)
+        if parent == d:
+            raise SeatUnknown(
+                "no seat identity.\n"
+                f"  Set $DOCKET_SEAT, or run `docket init <name>` to write a "
+                f"{SEAT_FILE} file here.\n"
+                "  This is never inferred from the directory name: a guessed "
+                "identity signs as somebody else."
+            )
+        d = parent
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS messages (

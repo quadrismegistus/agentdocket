@@ -137,9 +137,59 @@ def test_cursor_advances_and_peek_does_not():
         print("OK: cursor advances on read, peek leaves it alone")
 
 
+def test_seat_resolution_never_guesses():
+    """Identity comes from a declaration or from nothing. Never from the path.
+
+    The nesting case is not hypothetical: the layout this was built for has one
+    seat's directory sitting inside another's, so a child that forgets to
+    declare itself silently signs as its parent. Upward search is the
+    convenience; reporting the SOURCE alongside the seat is what makes it safe.
+    """
+    env_backup = os.environ.pop("DOCKET_SEAT", None)
+    try:
+        with tempfile.TemporaryDirectory() as d:
+            parent = os.path.join(d, "parent")
+            child = os.path.join(parent, "agents", "child")
+            os.makedirs(child)
+
+            # 1. nothing declared anywhere -> refuse, do not invent
+            try:
+                store.resolve_seat(child)
+                raise AssertionError("resolved a seat with nothing declared")
+            except store.SeatUnknown:
+                pass
+
+            # 2. parent declares, child inherits -- the convenience AND the trap
+            with open(os.path.join(parent, store.SEAT_FILE), "w") as fh:
+                fh.write("desktop\n")
+            seat, src = store.resolve_seat(child)
+            assert seat == "desktop", seat
+            assert src.endswith(store.SEAT_FILE)
+
+            # 3. nearest declaration wins
+            with open(os.path.join(child, store.SEAT_FILE), "w") as fh:
+                fh.write("@lacan\n")            # a leading @ is tolerated
+            seat, src = store.resolve_seat(child)
+            assert seat == "lacan", seat
+            assert child in src
+
+            # 4. env beats every file
+            os.environ["DOCKET_SEAT"] = "malign"
+            assert store.resolve_seat(child) == ("malign", "$DOCKET_SEAT")
+            del os.environ["DOCKET_SEAT"]
+
+            # 5. the directory name is never consulted
+            assert "child" not in store.resolve_seat(child)[0]
+        print("OK: seat resolves by declaration only; nearest wins; env overrides")
+    finally:
+        if env_backup is not None:
+            os.environ["DOCKET_SEAT"] = env_backup
+
+
 if __name__ == "__main__":
     test_concurrent_processes()
     test_search_finds_unaddressed_message()
     test_claim_blocks_reading_until_posted()
     test_cursor_advances_and_peek_does_not()
+    test_seat_resolution_never_guesses()
     print("\nall passed")

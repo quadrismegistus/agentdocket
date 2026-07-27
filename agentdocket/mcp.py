@@ -38,14 +38,13 @@ def _log(msg: str) -> None:
 
 
 def _seat() -> str:
-    seat = os.environ.get("DOCKET_SEAT", "").lstrip("@").strip()
-    if not seat:
-        raise RuntimeError(
-            "DOCKET_SEAT is not set. Set it in this server's MCP config env block. "
-            "It is deliberately not inferred: a guessed identity signs messages "
-            "as somebody else."
-        )
-    return seat
+    """$DOCKET_SEAT, else the nearest .docket-seat file. Never a guess.
+
+    Resolving from a file is what lets one user-scoped MCP registration serve
+    every project: each project declares its own seat instead of each config
+    hardcoding one.
+    """
+    return store.resolve_seat()[0]
 
 
 def _db() -> str:
@@ -229,7 +228,12 @@ def _handle(req: dict) -> dict | None:
 
 
 def main() -> int:
-    _log(f"seat={os.environ.get('DOCKET_SEAT', '(unset)')} db={_db()}")
+    try:
+        seat, src = store.resolve_seat()
+        _log(f"seat={seat} (from {src}) db={_db()} cwd={os.getcwd()}")
+    except store.SeatUnknown:
+        _log(f"NO SEAT RESOLVED from cwd={os.getcwd()}; tool calls will fail "
+             f"until $DOCKET_SEAT is set or a {store.SEAT_FILE} file exists")
     for line in sys.stdin:
         line = line.strip()
         if not line:

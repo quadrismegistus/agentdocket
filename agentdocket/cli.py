@@ -25,15 +25,12 @@ from . import store
 
 
 def _seat(args) -> str:
-    seat = args.seat or os.environ.get("DOCKET_SEAT")
-    if not seat:
-        sys.exit(
-            "error: no seat identity.\n"
-            "  Set DOCKET_SEAT=<name> or pass --as <name>.\n"
-            "  This is not inferred from the working directory on purpose: a\n"
-            "  guessed identity signs messages as somebody else."
-        )
-    return seat.lstrip("@")
+    if args.seat:
+        return args.seat.lstrip("@")
+    try:
+        return store.resolve_seat()[0]
+    except store.SeatUnknown as e:
+        sys.exit(f"error: {e}")
 
 
 def _body(args) -> str:
@@ -92,8 +89,31 @@ def main(argv=None) -> int:
     srl.add_argument("topic")
     sub.add_parser("claims", help="your open claims")
     sub.add_parser("stats", help="counts, senders, cursors")
+    sub.add_parser("whoami", help="the seat you would sign as, and where it came from")
+    si = sub.add_parser("init", help=f"write a {store.SEAT_FILE} file naming this seat")
+    si.add_argument("name")
 
     args = p.parse_args(argv)
+
+    # These two must work before any store exists.
+    if args.cmd == "init":
+        with open(store.SEAT_FILE, "w") as fh:
+            fh.write(args.name.lstrip("@") + "\n")
+        print(f"wrote {store.SEAT_FILE}: {args.name}\n"
+              f"Sessions started at or below this directory now sign as "
+              f"'{args.name}' unless $DOCKET_SEAT overrides.")
+        return 0
+    if args.cmd == "whoami":
+        if args.seat:
+            print(f"{args.seat}  (from --as)")
+            return 0
+        try:
+            seat, src = store.resolve_seat()
+            print(f"{seat}  (from {src})")
+        except store.SeatUnknown as e:
+            sys.exit(f"error: {e}")
+        return 0
+
     conn = store.connect(args.db)
 
     if args.cmd == "post":

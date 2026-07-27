@@ -1,0 +1,145 @@
+"""Does the store survive simultaneous writers from separate PROCESSES?
+
+This test exists because the objection that prompted the whole design was
+"brittle to simultaneous edits", and the answer given was "SQLite in WAL mode
+handles it". That answer is a claim. This file is the check.
+
+Threads would not test it. Python threads share one interpreter and SQLite's
+own locking is barely exercised; the real question is what happens when four
+independent OS processes, holding separate connections, append at the same
+instant. So this spawns processes.
+
+Three properties are asserted, and only the first is obvious:
+
+  1. NOTHING IS LOST     -- every write lands.
+  2. NOTHING IS DUPLICATED OR SKIPPED -- ids form a contiguous 1..N run, so the
+     total order really is total. If AUTOINCREMENT gapped under contention, the
+     "which came first" question the room exists to answer would be unreliable.
+  3. NOTHING IS INTERLEAVED -- each body arrives whole. This is what actually
+     breaks with concurrent appends to a plain text file, which is the design
+     that was rejected.
+"""
+from __future__ import annotations
+
+import multiprocessing as mp
+import os
+import sys
+import tempfile
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from room import store
+
+WRITERS = 8
+PER_WRITER = 60
+
+
+def _hammer(args):
+    """One process, its own connection, writing as fast as it can."""
+    path, seat = args
+    conn = store.connect(path)
+    ok = 0
+    for i in range(PER_WRITER):
+        # A body long enough that a partial write would be visible, and
+        # self-describing so interleaving is detectable rather than inferred.
+        body = f"{seat}:{i}:" + ("x" * 400) + f":end-{seat}-{i}"
+        store.post(conn, sender=seat, body=body, mentions=[f"peer{i % 3}"])
+        ok += 1
+    conn.close()
+    return ok
+
+
+def test_concurrent_processes():
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "room.db")
+        store.connect(path).close()  # create schema once, up front
+
+        seats = [f"seat{n}" for n in range(WRITERS)]
+        with mp.Pool(WRITERS) as pool:
+            written = sum(pool.map(_hammer, [(path, s) for s in seats]))
+
+        conn = store.connect(path)
+        rows = conn.execute("SELECT id, sender, body FROM messages ORDER BY id").fetchall()
+
+        expected = WRITERS * PER_WRITER
+        assert written == expected, f"writers reported {written}, expected {expected}"
+
+        # 1. nothing lost
+        assert len(rows) == expected, f"stored {len(rows)}, expected {expected}"
+
+        # 2. contiguous total order, no gaps or repeats
+        ids = [r["id"] for r in rows]
+        assert ids == list(range(1, expected + 1)), "ids are not a contiguous 1..N run"
+
+        # 3. every body whole, and attributed to the process that wrote it
+        for r in rows:
+            head, idx, _pad = r["body"].split(":", 2)
+            assert head == r["sender"], f"body/sender mismatch: {head} vs {r['sender']}"
+            assert r["body"].endswith(f":end-{head}-{idx}"), "body truncated or interleaved"
+
+        # each writer's messages are all present
+        per = {}
+        for r in rows:
+            per[r["sender"]] = per.get(r["sender"], 0) + 1
+        assert per == {s: PER_WRITER for s in seats}, f"uneven writes: {per}"
+
+        # mentions survived the contention too
+        nm = conn.execute("SELECT COUNT(*) c FROM mentions").fetchone()["c"]
+        assert nm == expected, f"{nm} mention rows, expected {expected}"
+        conn.close()
+        print(f"OK: {expected} messages from {WRITERS} concurrent processes, "
+              f"contiguous ids 1..{expected}, no interleaving, mentions intact")
+
+
+def test_search_finds_unaddressed_message():
+    """The df926b2 case: a true note that mentioned nobody must still be findable."""
+    with tempfile.TemporaryDirectory() as d:
+        conn = store.connect(os.path.join(d, "room.db"))
+        store.post(conn, "desktop", "booked df926b2 as mangled predecessor, IGNORE it")
+        store.post(conn, "malign", "unrelated chatter", mentions=["lacan"])
+        hits = store.search(conn, "df926b2")
+        assert len(hits) == 1 and "IGNORE" in hits[0].body
+        assert hits[0].mentions == (), "the point is that it addressed no one"
+        conn.close()
+        print("OK: unaddressed message retrievable by search")
+
+
+def test_claim_blocks_reading_until_posted():
+    """Independence: a seat verifying something cannot read others' answers first."""
+    with tempfile.TemporaryDirectory() as d:
+        conn = store.connect(os.path.join(d, "room.db"))
+        store.post(conn, "malign", "my verdict on the gate: PASS", mentions=["lacan"])
+        store.claim(conn, "lacan", "gate-audit")
+        try:
+            store.read(conn, "lacan", topic="gate-audit")
+            raise AssertionError("read should have been refused while the claim is open")
+        except PermissionError:
+            pass
+        store.release(conn, "lacan", "gate-audit")
+        msgs = store.read(conn, "lacan", topic="gate-audit")
+        assert len(msgs) == 1
+        conn.close()
+        print("OK: open claim blocks the read, release restores it")
+
+
+def test_cursor_advances_and_peek_does_not():
+    with tempfile.TemporaryDirectory() as d:
+        conn = store.connect(os.path.join(d, "room.db"))
+        for i in range(5):
+            store.post(conn, "malign", f"message {i}")
+        assert len(store.read(conn, "lacan", peek=True)) == 5
+        assert len(store.read(conn, "lacan", peek=True)) == 5, "peek moved the cursor"
+        assert len(store.read(conn, "lacan")) == 5
+        assert len(store.read(conn, "lacan")) == 0, "cursor did not advance"
+        store.post(conn, "desktop", "one more")
+        assert len(store.read(conn, "lacan")) == 1
+        conn.close()
+        print("OK: cursor advances on read, peek leaves it alone")
+
+
+if __name__ == "__main__":
+    test_concurrent_processes()
+    test_search_finds_unaddressed_message()
+    test_claim_blocks_reading_until_posted()
+    test_cursor_advances_and_peek_does_not()
+    print("\nall passed")

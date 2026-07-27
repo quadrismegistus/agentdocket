@@ -1,0 +1,13 @@
+[project]
+name = "room"
+version = "0.1.0"
+description = "Shared append-only log for coordinating Claude Code sessions"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+room = "room.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"

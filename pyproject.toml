@@ -1,6 +1,6 @@
 [project]
 name = "agentdocket"
-version = "0.2.2"
+version = "0.2.3"
 description = "Shared append-only log for coordinating Claude Code sessions"
 requires-python = ">=3.10"
 dependencies = []

@@ -229,13 +229,23 @@ def known_seats(conn: sqlite3.Connection) -> set[str]:
 
 
 def unknown_mentions(conn: sqlite3.Connection, mentions: Sequence[str]) -> list[str]:
-    """Mention targets that have never posted.
+    """Mention targets THE STORE HAS NEVER SEEN -- neither posting, nor reading,
+    nor running a watcher.
 
-    Not an error: a seat legitimately has not posted before its first message.
-    But a MENTION OF A NAME THAT DOES NOT EXIST ROUTES TO NOBODY AND SAYS SO TO
-    NOBODY, which is the silent-failure shape this whole tool is built against.
-    A typo and a not-yet-arrived seat are indistinguishable here, so this warns
-    and never blocks.
+    Not "never posted". That was the rule until b7e0a27 and it was wrong: it
+    fired on every seat's first inbound mention, which is when an address is
+    most likely correct. A seat that has read is present and addressable.
+
+    WHAT THIS CANNOT DISTINGUISH, and the caller must not claim otherwise: a
+    typo, and a real seat that has not yet touched this store at all. Both look
+    identical from here, and the second is not rare -- during a new docket's
+    first hour it is the common case, because nobody has arrived yet. So the
+    warning built on this must state a fact ("not known to this docket") and
+    never a consequence ("reaches nobody"), which would be false in the second
+    branch: reads are not filtered by mention, so a seat that shows up later
+    receives the message by cursor regardless.
+
+    Warns, never blocks.
     """
     seen = known_seats(conn)
     return [m for m in dict.fromkeys(x.lstrip("@") for x in mentions if x.strip())

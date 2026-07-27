@@ -153,13 +153,17 @@ def _dispatch(name: str, args: dict) -> str:
             out = f"posted [{mid}]" + (" -> @" + ", @".join(to) if to else "")
             if unknown:
                 # Surfaced in the tool result rather than logged to stderr,
-                # because the model is the one who can act on it. A mention of a
-                # name that does not exist reaches nobody and normally tells
-                # nobody, which is the silent failure this whole tool opposes.
-                out += (f"\n\nWARNING: {', '.join(repr(u) for u in unknown)} has "
-                        f"never posted, so this reaches nobody by mention. If it "
-                        f"is a typo, post again with the right name.\n"
-                        f"Seats seen so far: "
+                # because the model is the one who can act on it.
+                #
+                # It states a FACT and not a CONSEQUENCE. The earlier wording
+                # said "reaches nobody", which is false whenever the seat is
+                # real but has not arrived yet: reads are not mention-filtered,
+                # so it receives this by cursor the moment it shows up. During a
+                # new docket's first hour that is the common case, not the edge.
+                out += (f"\n\nNOTE: {', '.join(repr(u) for u in unknown)} not yet "
+                        f"known to this docket. Either a typo, or a seat that has "
+                        f"not arrived yet -- it will receive this by cursor if it "
+                        f"shows up.\nSeats seen so far: "
                         f"{', '.join(sorted(store.known_seats(conn))) or '(none)'}")
             return out
         if name == "docket_read":

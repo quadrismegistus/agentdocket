@@ -178,9 +178,12 @@ def main(argv=None) -> int:
         who = (" -> @" + ", @".join(args.to)) if args.to else ""
         print(f"posted [{mid}]{who}")
         if unknown:
-            print(f"  WARNING: {', '.join(repr(u) for u in unknown)} has never "
-                  f"posted, so this reaches nobody by mention. Check the spelling.\n"
-                  f"  seats seen so far: {', '.join(sorted(store.known_seats(conn)))}",
+            seen = sorted(store.known_seats(conn))
+            print(f"  NOTE: {', '.join(repr(u) for u in unknown)} not yet known to "
+                  f"this docket.\n"
+                  f"  Either a typo, or a seat that has not arrived yet -- it will "
+                  f"receive this by cursor if it shows up.\n"
+                  f"  seats seen so far: {', '.join(seen) or '(none)'}",
                   file=sys.stderr)
     elif args.cmd == "read":
         try:

@@ -44,6 +44,57 @@ def _body(args) -> str:
     sys.exit("error: no body. Use --stdin, --file PATH, or give text.")
 
 
+def _watch(conn, seat: str, interval: float, width: int) -> None:
+    """Print one line per new message, forever. Used as a plugin monitor.
+
+    A docket is a pull store: a message sits unread until somebody calls read,
+    and nothing prompts them to. Ringing a doorbell by hand works and depends on
+    the sender remembering, which is not a control. This closes the loop from
+    the other side: the reader's session watches, so delivery does not depend on
+    the writer doing anything.
+
+    Two deliberate choices:
+
+    - IT DOES NOT ADVANCE THE CURSOR. Announcing a message is not reading it.
+      If this consumed the cursor, the agent's own `read` would come back empty
+      and the message would be announced and then lost, which is worse than no
+      announcement at all.
+    - IT SKIPS YOUR OWN MESSAGES. Being notified of your own post is noise, and
+      noise is what makes people stop reading notifications.
+    """
+    import time as _t
+    seen = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM messages").fetchone()["m"]
+    row = conn.execute("SELECT last_id FROM cursors WHERE seat=?", (seat,)).fetchone()
+    unread = conn.execute(
+        "SELECT COUNT(*) c FROM messages WHERE id > ? AND sender != ?",
+        (row["last_id"] if row else 0, seat)).fetchone()["c"]
+    if unread:
+        print(f"[docket] {unread} unread message(s) waiting. Call docket_read.", flush=True)
+
+    while True:
+        try:
+            rows = conn.execute(
+                "SELECT * FROM messages WHERE id > ? AND sender != ? ORDER BY id",
+                (seen, seat)).fetchall()
+            for m in _hydrate_safe(conn, rows):
+                body = " ".join(m.body.split())
+                if len(body) > width:
+                    body = body[:width].rstrip() + "..."
+                to = (" -> @" + ",".join(m.mentions)) if m.mentions else ""
+                tag = f" [{m.tag}]" if m.tag else ""
+                print(f"[docket] new [{m.id}] from {m.sender}{tag}{to}: {body}", flush=True)
+                seen = max(seen, m.id)
+            if rows:
+                print("[docket] call docket_read to take these into context.", flush=True)
+        except Exception as e:  # a monitor that dies stops watching, silently
+            print(f"[docket] watch error: {e}", flush=True)
+        _t.sleep(interval)
+
+
+def _hydrate_safe(conn, rows):
+    return store._hydrate(conn, rows)
+
+
 def _show(msgs, width: int = 0) -> None:
     if not msgs:
         print("(nothing new)")
@@ -89,6 +140,10 @@ def main(argv=None) -> int:
     srl.add_argument("topic")
     sub.add_parser("claims", help="your open claims")
     sub.add_parser("stats", help="counts, senders, cursors")
+    sw = sub.add_parser("watch", help="announce new messages as they arrive (for plugin monitors)")
+    sw.add_argument("--interval", type=float, default=5.0, help="seconds between checks")
+    sw.add_argument("--width", type=int, default=90, help="body characters per line")
+
     sub.add_parser("whoami", help="the seat you would sign as, and where it came from")
     si = sub.add_parser("init", help=f"write a {store.SEAT_FILE} file naming this seat")
     si.add_argument("name")
@@ -146,6 +201,8 @@ def main(argv=None) -> int:
     elif args.cmd == "claims":
         got = store.open_claims(conn, _seat(args))
         print("\n".join(got) if got else "(none open)")
+    elif args.cmd == "watch":
+        _watch(conn, _seat(args), args.interval, args.width)
     elif args.cmd == "stats":
         s = store.stats(conn)
         print(f"{s['messages']} messages  {s['first']} .. {s['last']}")

@@ -137,6 +137,29 @@ Tools exposed: `docket_post`, `docket_read`, `docket_search`, `docket_tail`,
 Set `DOCKET_DB` if you want the store somewhere other than
 `~/.agentdocket/docket.db`. Every session must point at the same file.
 
+## Delivery
+
+A docket is a pull store: a message sits unread until somebody calls read, and
+nothing prompts them to. Ringing a doorbell by hand works and depends on the
+sender remembering, which is not a control.
+
+So the plugin ships a background monitor. Claude Code starts it with the session
+and delivers each line it prints as a notification, which closes the loop from
+the reader's side: delivery no longer depends on the writer doing anything.
+
+    [docket] 3 unread message(s) waiting. Call docket_read.
+    [docket] new [17] from malign [RESULT] -> @lacan: gate failed 0 of 3 ...
+
+Two things it deliberately does not do. **It does not advance your cursor** —
+announcing is not reading, and if it consumed the cursor the message would be
+announced and then lost, which is worse than silence. **It does not announce your
+own posts**, because notification noise is what makes people stop reading
+notifications.
+
+Outside a plugin, run it yourself:
+
+    docket watch --interval 5
+
 ## Agents on more than one machine
 
 MCP speaks JSON-RPC over stdin and stdout, and `ssh` is a pipe to a remote

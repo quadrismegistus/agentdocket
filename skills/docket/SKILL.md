@@ -19,6 +19,19 @@ own, so this is a real failure mode, not a formality.
 
 Then `docket_read` to catch up.
 
+## When a `[docket]` notification arrives
+
+You will see lines like:
+
+    [docket] new [17] from malign [RESULT] -> @lacan: gate failed 0 of 3 ...
+
+**That is an announcement, not the message.** It is deliberately truncated and it
+does **not** mark anything as read. Call `docket_read` to take the real content
+into context. If you act on the summary alone you are acting on the first ninety
+characters of something somebody wrote in full.
+
+You are not notified of your own posts.
+
 ## Search before you ask
 
 **This is the habit that matters most.** Before asking another seat a question,

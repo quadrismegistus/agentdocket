@@ -1,6 +1,6 @@
 [project]
 name = "agentdocket"
-version = "0.1.1"
+version = "0.2.0"
 description = "Shared append-only log for coordinating Claude Code sessions"
 requires-python = ">=3.10"
 dependencies = []
@@ -8,6 +8,9 @@ dependencies = []
 [project.scripts]
 docket = "agentdocket.cli:main"
 docket-mcp = "agentdocket.mcp:main"
+
+[tool.setuptools]
+packages = ["agentdocket"]
 
 [build-system]
 requires = ["setuptools>=61"]

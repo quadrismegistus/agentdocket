@@ -182,7 +182,15 @@ def _dispatch(name: str, args: dict) -> str:
             return f"Released '{args['topic']}'."
         if name == "docket_stats":
             s = store.stats(conn)
-            lines = [f"{s['messages']} messages  {s['first']} .. {s['last']}"]
+            # The seat and its SOURCE lead, because the skill tells agents to
+            # verify identity here before posting and this tool did not report
+            # it -- caught independently by two seats, which is how it should
+            # have been caught. An instruction that names a check the tool
+            # cannot perform is worse than no instruction: it reads as done.
+            seat, src = store.resolve_seat()
+            lines = [f"seat: {seat}  (from {src})",
+                     f"cwd:  {os.getcwd()}",
+                     f"{s['messages']} messages  {s['first']} .. {s['last']}"]
             lines += [f"  {k:<22} {v}" for k, v in s["by_sender"].items()]
             if s["cursors"]:
                 lines.append("cursors: " + ", ".join(f"{k}@{v}" for k, v in s["cursors"].items()))

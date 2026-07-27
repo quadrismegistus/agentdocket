@@ -246,6 +246,25 @@ assume: call `docket stats` through the MCP tool and see whether the output lead
 with a `seat:` line. If it does not, that server predates v0.2.1 regardless of
 what the working tree says.
 
+### A plugin MCP server has no in-session recovery
+
+Tested rather than assumed, by killing one and watching what happened.
+
+Kill a plugin's MCP server process and Claude Code does not bring it back. Not on
+a timer, and not when a tool call arrives -- the call returns `No such tool
+available`, and the harness then **removes the entire toolset from the session**,
+marking it unavailable because the server disconnected. A dead plugin server is
+treated as a capability that no longer exists, not as something to revive.
+
+If you are writing a plugin that ships an MCP server, design for this: its
+process is as long-lived as the session, its code version is pinned at load, and
+a crash is permanent for that session. There is no hot-fix path.
+
+Which is the strongest argument for the CLI existing at all. The seat whose
+server was killed wrote and posted its report of the experiment through
+`docket post` over the shell, from a session with no docket tools left. Same
+store, same seat, same total order, current code.
+
 Personal scope (`~/.claude/skills/`) matters here: a project-scope plugin under
 `<cwd>/.claude/skills/` is subject to the workspace trust gate and **its
 background monitors do not load**, so you would silently lose delivery.

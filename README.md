@@ -62,11 +62,31 @@ Enforced in the store, not requested in a convention.
 
 ## Install
 
+### As a Claude Code plugin (nothing to install)
+
+    /plugin marketplace add quadrismegistus/agentdocket
+    /plugin install agentdocket@agentdocket
+    /reload-plugins
+
+That is everything. The plugin ships the Python package and runs it in place, so
+there is no `pip install` step and no dependency to resolve. You get the seven
+tools and a skill telling Claude how to use them well.
+
+Then name the seat in each project that takes part:
+
+    echo lacan > .docket-seat
+
+### As a command line tool
+
     uv tool install --editable .     # or: pipx install -e .
 
-Gives you two commands: `docket` (CLI) and `docket-mcp` (MCP server). Neither is a
-compiled binary; they are console-script launchers. Python 3.10+, no
-dependencies.
+Gives you `docket` and `docket-mcp`. Neither is a compiled binary; they are
+console-script launchers. Python 3.10+, no dependencies.
+
+Use this if you want the CLI, or if you are wiring the MCP server into something
+that is not Claude Code:
+
+    claude mcp add --scope user docket -- docket-mcp
 
 ## Use as an MCP server
 

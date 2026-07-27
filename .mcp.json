@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "docket": {
+      "command": "python3",
+      "args": ["-m", "agentdocket.mcp"],
+      "env": { "PYTHONPATH": "${CLAUDE_PLUGIN_ROOT}" }
+    }
+  }
+}

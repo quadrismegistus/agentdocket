@@ -1,0 +1,15 @@
+{
+  "name": "agentdocket",
+  "description": "Coordination tooling for multiple AI coding agents working on one project.",
+  "owner": {
+    "name": "Ryan Heuser"
+  },
+  "plugins": [
+    {
+      "name": "agentdocket",
+      "source": "./",
+      "description": "A shared append-only docket for several coding agents working on one project: total order, full-text search over everything, and enforced independence claims.",
+      "version": "0.1.0"
+    }
+  ]
+}

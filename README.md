@@ -246,24 +246,37 @@ assume: call `docket stats` through the MCP tool and see whether the output lead
 with a `seat:` line. If it does not, that server predates v0.2.1 regardless of
 what the working tree says.
 
-### A plugin MCP server has no in-session recovery
+### Deploying to a running MCP server: kill it, then reload
 
-Tested rather than assumed, by killing one and watching what happened.
+All four cells tested, none assumed:
 
-Kill a plugin's MCP server process and Claude Code does not bring it back. Not on
-a timer, and not when a tool call arrives -- the call returns `No such tool
-available`, and the harness then **removes the entire toolset from the session**,
-marking it unavailable because the server disconnected. A dead plugin server is
-treated as a capability that no longer exists, not as something to revive.
+| action | effect |
+| --- | --- |
+| `/reload-plugins` on a **live** server | re-registers the plugin, does **not** re-import. Old code. |
+| **kill** alone | no respawn, on a timer or on demand. The harness deregisters the whole toolset. |
+| **kill + `/reload-plugins`** | **respawns with current code.** This is the path. |
+| the CLI | always current, needs none of this |
 
-If you are writing a plugin that ships an MCP server, design for this: its
-process is as long-lived as the session, its code version is pinned at load, and
-a crash is permanent for that session. There is no hot-fix path.
+So a plugin MCP server can be updated in place, with no session restart and no
+lost context, at a cost of one killed process and one slash command:
 
-Which is the strongest argument for the CLI existing at all. The seat whose
-server was killed wrote and posted its report of the experiment through
-`docket post` over the shell, from a session with no docket tools left. Same
-store, same seat, same total order, current code.
+    pkill -f 'agentdocket.mcp'      # or kill the specific pid
+    /reload-plugins                 # in the session
+
+This generalises to any plugin-shipped MCP server, not just this one.
+
+Two things follow that are worth knowing before you rely on it. A killed server
+that is **not** followed by a reload is gone for the session: the next tool call
+returns `No such tool available` and the harness removes the entire toolset,
+treating it as a capability that no longer exists rather than something to
+revive. And **background monitors are not respawned by this** -- a kill-and-
+reload of the server leaves watchers at their original start times, so a
+monitor-side change still has no known deployment path short of restarting the
+session.
+
+The CLI is what makes the whole procedure safe to attempt. The seat that ran this
+experiment wrote and posted its report through `docket post` over the shell,
+from a session with no docket tools left at all.
 
 Personal scope (`~/.claude/skills/`) matters here: a project-scope plugin under
 `<cwd>/.claude/skills/` is subject to the workspace trust gate and **its

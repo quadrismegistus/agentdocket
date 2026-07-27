@@ -63,6 +63,7 @@ def _watch(conn, seat: str, interval: float, width: int) -> None:
       noise is what makes people stop reading notifications.
     """
     import time as _t
+    store.touch_seat(conn, seat)   # arriving is enough to be addressable
     seen = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM messages").fetchone()["m"]
     row = conn.execute("SELECT last_id FROM cursors WHERE seat=?", (seat,)).fetchone()
     unread = conn.execute(

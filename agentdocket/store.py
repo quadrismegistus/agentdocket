@@ -116,6 +116,19 @@ CREATE TABLE IF NOT EXISTS claims (
     PRIMARY KEY (seat, topic, opened)
 );
 
+-- Seats the store has ever SEEN, which is not the same as seats that have
+-- SPOKEN. A seat is recorded here the moment it posts, reads, or starts a
+-- watcher, so it is known from the instant it arrives rather than from its
+-- first message. Keying the unknown-mention warning on senders instead made it
+-- fire on every seat's first inbound mention -- the one moment the address is
+-- most likely correct and most consequential -- and a false alarm on the common
+-- case teaches people to ignore the alarm.
+CREATE TABLE IF NOT EXISTS seats (
+    seat       TEXT PRIMARY KEY,
+    first_seen TEXT NOT NULL,
+    last_seen  TEXT NOT NULL
+);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts
     USING fts5(body, content='messages', content_rowid='id');
 
@@ -176,6 +189,7 @@ def post(conn: sqlite3.Connection, sender: str, body: str,
     if not body.strip():
         raise ValueError("empty body")
     seats = tuple(dict.fromkeys(m.lstrip("@") for m in mentions if m.strip()))
+    touch_seat(conn, sender)
     with conn:
         cur = conn.execute(
             "INSERT INTO messages (ts, sender, tag, body) VALUES (?,?,?,?)",
@@ -189,9 +203,29 @@ def post(conn: sqlite3.Connection, sender: str, body: str,
     return mid
 
 
+def touch_seat(conn: sqlite3.Connection, seat: str) -> None:
+    """Record that this seat exists. Called on post, on read, and on watch start.
+
+    Presence, not speech. A seat that has loaded the plugin and read once is as
+    real as one that has posted, and addressing it is correct.
+    """
+    now = _now()
+    with conn:
+        conn.execute(
+            "INSERT INTO seats (seat, first_seen, last_seen) VALUES (?,?,?) "
+            "ON CONFLICT(seat) DO UPDATE SET last_seen=excluded.last_seen",
+            (seat, now, now))
+
+
 def known_seats(conn: sqlite3.Connection) -> set[str]:
-    """Every seat that has ever posted. The authority on what a real seat is."""
-    return {r["sender"] for r in conn.execute("SELECT DISTINCT sender FROM messages")}
+    """Every seat the store has seen arrive OR speak.
+
+    The union matters for backward compatibility: stores written before the
+    seats table existed have senders and no presence records, and a seat that
+    posted is obviously real.
+    """
+    return ({r["seat"] for r in conn.execute("SELECT seat FROM seats")} |
+            {r["sender"] for r in conn.execute("SELECT DISTINCT sender FROM messages")})
 
 
 def unknown_mentions(conn: sqlite3.Connection, mentions: Sequence[str]) -> list[str]:
@@ -240,6 +274,7 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
             f"{seat} holds an open independence claim on '{topic}'. "
             "Post your own finding before reading others'."
         )
+    touch_seat(conn, seat)
     last = conn.execute(
         "SELECT last_id FROM cursors WHERE seat=?", (seat,)
     ).fetchone()

@@ -186,10 +186,41 @@ def test_seat_resolution_never_guesses():
             os.environ["DOCKET_SEAT"] = env_backup
 
 
+def test_mention_warning_does_not_fire_on_an_arrived_seat():
+    """A seat that has arrived but not spoken is a real address, not a typo.
+
+    The first version keyed this on senders, so the warning fired on every
+    seat's FIRST INBOUND MENTION -- the moment the address is most likely
+    correct and most consequential -- and told the sender it reached nobody when
+    in fact it reached them by cursor, since reads are not mention-filtered.
+    A false alarm on the common case teaches people to ignore the alarm, which
+    is worse than the typo it was built to catch.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        conn = store.connect(os.path.join(d, "docket.db"))
+
+        # Nobody has arrived: a mention really is unknown.
+        assert store.unknown_mentions(conn, ["registrar"]) == ["registrar"]
+
+        # registrar loads the plugin and reads. It has posted nothing.
+        store.read(conn, "registrar")
+        assert store.unknown_mentions(conn, ["registrar"]) == [], \
+            "a seat that has read is addressable and must not warn"
+
+        # A genuine typo still warns.
+        assert store.unknown_mentions(conn, ["registar"]) == ["registar"]
+
+        # Both at once: only the typo is reported.
+        assert store.unknown_mentions(conn, ["registrar", "registar"]) == ["registar"]
+        conn.close()
+        print("OK: arrived-but-silent seats do not warn; typos still do")
+
+
 if __name__ == "__main__":
     test_concurrent_processes()
     test_search_finds_unaddressed_message()
     test_claim_blocks_reading_until_posted()
     test_cursor_advances_and_peek_does_not()
     test_seat_resolution_never_guesses()
+    test_mention_warning_does_not_fire_on_an_arrived_seat()
     print("\nall passed")

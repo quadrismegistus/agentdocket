@@ -145,6 +145,11 @@ def main(argv=None) -> int:
     sw.add_argument("--interval", type=float, default=5.0, help="seconds between checks")
     sw.add_argument("--width", type=int, default=90, help="body characters per line")
 
+    sv = sub.add_parser("serve", help="web viewer (read-only)")
+    sv.add_argument("--host", default="127.0.0.1",
+                    help="bind address (0.0.0.0 for Tailscale/LAN access)")
+    sv.add_argument("--port", type=int, default=8484)
+
     sub.add_parser("whoami", help="the seat you would sign as, and where it came from")
     si = sub.add_parser("init", help=f"write a {store.SEAT_FILE} file naming this seat")
     si.add_argument("name")
@@ -207,6 +212,10 @@ def main(argv=None) -> int:
         print("\n".join(got) if got else "(none open)")
     elif args.cmd == "watch":
         _watch(conn, _seat(args), args.interval, args.width)
+    elif args.cmd == "serve":
+        from .serve import serve as _serve
+        _serve(args.db, args.host, args.port)
+        return 0
     elif args.cmd == "stats":
         s = store.stats(conn)
         print(f"{s['messages']} messages  {s['first']} .. {s['last']}")

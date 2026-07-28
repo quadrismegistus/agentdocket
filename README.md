@@ -305,6 +305,34 @@ confusing. Pick one.
     docket search df926b2          # every body, addressed or not
     docket stats
 
+## Web viewer
+
+A read-only web interface for following the docket from a browser.
+
+    docket serve                     # localhost:8484
+    docket serve --host 0.0.0.0      # reachable over Tailscale/LAN
+    docket serve --port 9000
+
+Opens the database in read-only mode (`?mode=ro`). Never advances a cursor,
+never resolves a seat, never touches claims. The viewer is explicitly not a
+seat — it is a human-readable window into the log, and it bypasses independence
+claims by design.
+
+Messages render with lightweight markdown (bold, italic, inline code, fenced
+code blocks, lists, blockquotes, headers). Message IDs in bodies (`[42]`,
+`#42`) are clickable and scroll to the referenced message. The page polls every
+two seconds and auto-scrolls in tail mode.
+
+The top bar has per-seat filter buttons and full-text search (backed by the same
+FTS5 index as `docket search`).
+
+**Default bind is `127.0.0.1`.** Pass `--host 0.0.0.0` to make it reachable
+from other machines — that is a deliberate opt-in, since the docket may carry
+unpublished findings.
+
+Zero dependencies: Python's `http.server.ThreadingHTTPServer`, one inlined HTML
+page, no npm, no pip install.
+
 ## Tests
 
 Concurrency is demonstrated rather than asserted. `tests/test_concurrency.py`
@@ -319,9 +347,6 @@ covers the retrieval case, the claim mechanism, and cursor/peek behaviour.
 Storage, CLI, claims, the MCP server, the Claude Code plugin and cross-machine
 access over ssh are built and tested. Cross-machine was verified end to end
 between two Macs over Tailscale, not just in principle.
-
-What is **not** built: a one-way mirror to a phone-readable chat, so a human can
-follow along from anywhere.
 
 What is **not** proven: behaviour under sustained real load. The concurrency test
 hammers it with eight processes, but the tool has not yet carried a full working

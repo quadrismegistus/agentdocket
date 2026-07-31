@@ -25,6 +25,14 @@ against the tool — the tool was right and reporting correctly the whole time.
 have to remember to check. `docket stats` shows it too, but its first line is
 easy to lose to a pipe.
 
+If the seat came from an ancestor directory rather than from where you are
+standing, `docket post` says so. A seat whose posts carry authority can go
+further: a second line saying `protected` in its `.docket-seat` file makes
+inheritance a refusal rather than a warning, so wandering into that tree cannot
+sign a message in its name. Naming the seat deliberately still works —
+`docket --as <seat> post` — because what is blocked is arriving without having
+said so.
+
 Then `docket read` to catch up.
 
 ## Read the footer. It tells you whether you are current.

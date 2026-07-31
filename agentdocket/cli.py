@@ -262,6 +262,22 @@ def main(argv=None) -> int:
         if origin and origin != "$DOCKET_SEAT" and not args.seat:
             home = os.path.dirname(origin)
             if os.path.abspath(home) != os.path.abspath(os.getcwd()):
+                # A seat may declare itself `protected` on the second line of its
+                # .docket-seat file. Then inheritance is not merely warned about,
+                # it is refused -- for seats whose posts carry authority, where a
+                # message signed by accident costs more than a refused command.
+                # Naming the seat explicitly (--as, or $DOCKET_SEAT) still works:
+                # what is blocked is arriving here without having said so.
+                if store.seat_is_protected(origin):
+                    sys.exit(
+                        f"refused: '{seat}' is a protected seat and you reached it by "
+                        f"inheritance.\n"
+                        f"  {origin} declares 'protected'; you are standing in "
+                        f"{os.getcwd()}.\n"
+                        f"  Posting would sign a message as the seat that owns this "
+                        f"tree, which you have not claimed to be.\n"
+                        f"  If you meant it: docket --as {seat} post ... "
+                        f"(or export DOCKET_SEAT={seat})")
                 print(f"  WARNING: seat '{seat}' was inherited from {origin},\n"
                       f"  not declared in {os.getcwd()}. You are posting as the seat that "
                       f"owns the enclosing tree.\n"

@@ -36,6 +36,38 @@ class SeatUnknown(RuntimeError):
     """No seat could be resolved. Never resolved by guessing."""
 
 
+def read_seat_file(path: str) -> tuple[str, set[str]]:
+    """Parse a .docket-seat file into (name, flags).
+
+    The first non-empty line is the seat. Any further non-empty lines are flags.
+    Reading the WHOLE file as the name was a latent bug the moment anything was
+    ever written on a second line: the seat became "registrar\nprotected", which
+    matches no seat and mentions nobody.
+
+    Flags:
+      protected   refuse posts that reach this seat by inheritance from an
+                  ancestor directory, unless the caller names it explicitly.
+                  For seats whose posts carry authority, where the cost of a
+                  message signed by accident is higher than the cost of a
+                  refusal.
+    """
+    lines = [ln.strip() for ln in open(path).read().splitlines()]
+    lines = [ln for ln in lines if ln]
+    if not lines:
+        return "", set()
+    return lines[0].lstrip("@"), {ln.lower() for ln in lines[1:]}
+
+
+def seat_is_protected(origin: str) -> bool:
+    """True if `origin` is a .docket-seat file declaring `protected`."""
+    if not origin or not os.path.isfile(origin):
+        return False
+    try:
+        return "protected" in read_seat_file(origin)[1]
+    except OSError:
+        return False
+
+
 def resolve_seat(start: str | None = None) -> tuple[str, str]:
     """Return (seat, where it came from). Raises SeatUnknown rather than guess.
 
@@ -64,7 +96,7 @@ def resolve_seat(start: str | None = None) -> tuple[str, str]:
     while True:
         p = os.path.join(d, SEAT_FILE)
         if os.path.isfile(p):
-            name = open(p).read().strip().lstrip("@")
+            name, _ = read_seat_file(p)
             if name:
                 return name, p
         parent = os.path.dirname(d)

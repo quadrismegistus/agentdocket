@@ -270,14 +270,51 @@ def _hydrate(conn: sqlite3.Connection, rows: Iterable[sqlite3.Row]) -> list[Mess
     ]
 
 
+def head_id(conn: sqlite3.Connection) -> int:
+    """The newest message id in the docket. 0 if empty."""
+    return conn.execute("SELECT COALESCE(MAX(id), 0) m FROM messages").fetchone()["m"]
+
+
+def cursor_of(conn: sqlite3.Connection, seat: str) -> int:
+    row = conn.execute("SELECT last_id FROM cursors WHERE seat=?", (seat,)).fetchone()
+    return row["last_id"] if row else 0
+
+
+def unread_count(conn: sqlite3.Connection, seat: str, *,
+                 mentions_only: bool = False) -> int:
+    """How many messages `read` would still have to hand back after the cursor.
+
+    Deliberately matches read()'s filter, INCLUDING the seat's own posts, because
+    the number exists to describe what read will do next. `watch` computes a
+    similar count but excludes the seat's own messages (announcing your own post
+    is noise), so the two can differ by however much you have just written. That
+    is not a bug in either; they answer different questions.
+    """
+    last_id = cursor_of(conn, seat)
+    if mentions_only:
+        return conn.execute(
+            "SELECT COUNT(*) c FROM messages m JOIN mentions x ON x.message_id=m.id "
+            "WHERE m.id > ? AND x.seat = ?", (last_id, seat)).fetchone()["c"]
+    return conn.execute(
+        "SELECT COUNT(*) c FROM messages WHERE id > ?", (last_id,)).fetchone()["c"]
+
+
 def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
          limit: int | None = None, peek: bool = False,
-         topic: str | None = None) -> list[Message]:
+         topic: str | None = None, catch_up: bool = False) -> list[Message]:
     """Messages since this seat's cursor.
 
     Refuses if the seat holds an open independence claim on `topic`. The refusal
     is the point: a seat asked to verify something independently must post its
     own answer before it can see anyone else's.
+
+    By default a limited read returns the OLDEST unread and advances the cursor
+    past only those. In a busy docket a reader using small limits therefore falls
+    further behind with every call while its reads look successful. `catch_up`
+    inverts that: return the NEWEST `limit` unread and advance the cursor to the
+    head, trading the skipped middle for arriving at current state in one call.
+    Callers should surface unread_count() either way -- being behind is not
+    otherwise observable from a read's own output.
     """
     if topic and open_claims(conn, seat, topic):
         raise PermissionError(
@@ -285,27 +322,42 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
             "Post your own finding before reading others'."
         )
     touch_seat(conn, seat)
-    last = conn.execute(
-        "SELECT last_id FROM cursors WHERE seat=?", (seat,)
-    ).fetchone()
-    last_id = last["last_id"] if last else 0
+    last_id = cursor_of(conn, seat)
 
-    sql = ("SELECT m.* FROM messages m JOIN mentions x ON x.message_id=m.id "
-           "WHERE m.id > ? AND x.seat = ? ORDER BY m.id") if mentions_only else \
-          "SELECT * FROM messages WHERE id > ? ORDER BY id"
-    args = (last_id, seat) if mentions_only else (last_id,)
-    if limit:
-        sql += f" LIMIT {int(limit)}"
+    if mentions_only:
+        body = ("SELECT m.* FROM messages m JOIN mentions x ON x.message_id=m.id "
+                "WHERE m.id > ? AND x.seat = ?")
+        order = "m.id"
+        args = (last_id, seat)
+    else:
+        body = "SELECT * FROM messages WHERE id > ?"
+        order = "id"
+        args = (last_id,)
+
+    if limit and catch_up:
+        # Newest `limit`, still handed back oldest-first so the reader sees them
+        # in the order they were written.
+        sql = (f"SELECT * FROM ({body} ORDER BY {order} DESC LIMIT {int(limit)}) "
+               f"ORDER BY id")
+    elif limit:
+        sql = f"{body} ORDER BY {order} LIMIT {int(limit)}"
+    else:
+        sql = f"{body} ORDER BY {order}"
     rows = conn.execute(sql, args).fetchall()
     msgs = _hydrate(conn, rows)
 
-    if msgs and not peek:
-        with conn:
-            conn.execute(
-                "INSERT INTO cursors (seat, last_id) VALUES (?,?) "
-                "ON CONFLICT(seat) DO UPDATE SET last_id=excluded.last_id",
-                (seat, msgs[-1].id),
-            )
+    if not peek:
+        # catch_up advances to the docket head even though earlier messages were
+        # never returned -- that is the point of it, and it must not advance to
+        # msgs[-1].id, which would leave the skipped tail to be re-served later.
+        target = head_id(conn) if catch_up else (msgs[-1].id if msgs else None)
+        if target:
+            with conn:
+                conn.execute(
+                    "INSERT INTO cursors (seat, last_id) VALUES (?,?) "
+                    "ON CONFLICT(seat) DO UPDATE SET last_id=excluded.last_id",
+                    (seat, target),
+                )
     return msgs
 
 

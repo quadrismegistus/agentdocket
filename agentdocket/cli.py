@@ -105,6 +105,28 @@ def _show(msgs, width: int = 0) -> None:
         print()
 
 
+def position_line(conn, seat: str, *, mentions_only: bool = False) -> str:
+    """Where this seat now stands, for the footer of every read.
+
+    Without this a limited read is indistinguishable from a complete one: the
+    docket CAN tell you that you are behind -- `stats` shows cursors and head in
+    one cheap call -- but only if you already suspect it, which is precisely the
+    reader who does not need telling. The number was already being computed by
+    `watch`; it just never reached this path.
+    """
+    remaining = store.unread_count(conn, seat, mentions_only=mentions_only)
+    head = store.head_id(conn)
+    at = store.cursor_of(conn, seat)
+    if not remaining:
+        return f"[docket] up to date at [{head}]."
+    return (f"[docket] {remaining} unread remaining; you are at [{at}], "
+            f"head is [{head}]. Use --catch-up to jump to the head.")
+
+
+def _show_position(conn, seat: str, *, mentions_only: bool = False) -> None:
+    print(position_line(conn, seat, mentions_only=mentions_only))
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="docket", description="Shared log for coordinating agents.")
     p.add_argument("--db", default=store.DEFAULT_DB, help="store path")
@@ -124,11 +146,19 @@ def main(argv=None) -> int:
     sr.add_argument("--mentions", action="store_true", help="only what mentions you")
     sr.add_argument("--peek", action="store_true", help="do not advance the cursor")
     sr.add_argument("--limit", type=int)
+    sr.add_argument("--catch-up", action="store_true",
+                    help="with --limit: return the NEWEST unread and jump the "
+                         "cursor to the head, skipping the middle")
     sr.add_argument("--topic", help="refuse if you hold an open claim on it")
     sr.add_argument("--width", type=int, default=0, help="truncate bodies for scanning")
 
     st = sub.add_parser("tail", help="last N messages regardless of cursor")
+    # -n is accepted as well as the positional because every other CLI in the
+    # world spells it that way, and `docket tail -n 12` used to die with an
+    # unrecognized-arguments error that reads like the command is wrong.
     st.add_argument("n", nargs="?", type=int, default=20)
+    st.add_argument("-n", "--n", dest="n_flag", type=int, default=None,
+                    help="alias for the positional count")
     st.add_argument("--width", type=int, default=0)
 
     ss = sub.add_parser("search", help="full text over every message")
@@ -192,13 +222,17 @@ def main(argv=None) -> int:
                   file=sys.stderr)
     elif args.cmd == "read":
         try:
-            _show(store.read(conn, _seat(args), mentions_only=args.mentions,
-                             limit=args.limit, peek=args.peek, topic=args.topic),
+            seat = _seat(args)
+            _show(store.read(conn, seat, mentions_only=args.mentions,
+                             limit=args.limit, peek=args.peek, topic=args.topic,
+                             catch_up=args.catch_up),
                   args.width)
+            _show_position(conn, seat, mentions_only=args.mentions)
         except PermissionError as e:
             sys.exit(f"refused: {e}")
     elif args.cmd == "tail":
-        _show(store.tail(conn, args.n), args.width)
+        _show(store.tail(conn, args.n_flag if args.n_flag is not None else args.n),
+              args.width)
     elif args.cmd == "search":
         _show(store.search(conn, " ".join(args.query)), args.width)
     elif args.cmd == "claim":

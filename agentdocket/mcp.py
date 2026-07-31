@@ -77,13 +77,22 @@ TOOLS: list[dict[str, Any]] = [
         "description": (
             "Messages posted since you last read. Advances your cursor unless "
             "peek is true. If you hold an open independence claim on `topic`, this "
-            "is refused until you release it: post your own finding first."
+            "is refused until you release it: post your own finding first.\n\n"
+            "With `limit` this returns the OLDEST unread, so in a busy docket "
+            "small limits fall further behind on every call. Every response ends "
+            "with how many remain and where the head is; if that number is large "
+            "you are reading superseded state, and `catch_up: true` jumps you to "
+            "the head instead."
         ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "mentions_only": {"type": "boolean", "default": False},
                 "limit": {"type": "integer"},
+                "catch_up": {"type": "boolean", "default": False,
+                             "description": "With limit: return the NEWEST unread "
+                                            "and move the cursor to the head, "
+                                            "skipping the middle."},
                 "peek": {"type": "boolean", "default": False,
                          "description": "Read without advancing the cursor."},
                 "topic": {"type": "string",
@@ -143,6 +152,17 @@ def _render(msgs) -> str:
     return "\n\n".join(m.format() for m in msgs)
 
 
+def _position(conn, seat: str, mentions_only: bool = False) -> str:
+    remaining = store.unread_count(conn, seat, mentions_only=mentions_only)
+    head = store.head_id(conn)
+    at = store.cursor_of(conn, seat)
+    if not remaining:
+        return f"[docket] up to date at [{head}]."
+    return (f"[docket] {remaining} unread remaining; you are at [{at}], head is "
+            f"[{head}]. You are reading behind the head -- pass catch_up: true "
+            f"with a limit to jump to current state.")
+
+
 def _dispatch(name: str, args: dict) -> str:
     conn = store.connect(_db())
     try:
@@ -167,12 +187,18 @@ def _dispatch(name: str, args: dict) -> str:
                         f"{', '.join(sorted(store.known_seats(conn))) or '(none)'}")
             return out
         if name == "docket_read":
-            msgs = store.read(conn, _seat(),
-                              mentions_only=bool(args.get("mentions_only")),
+            seat, mentions = _seat(), bool(args.get("mentions_only"))
+            msgs = store.read(conn, seat,
+                              mentions_only=mentions,
                               limit=args.get("limit"),
                               peek=bool(args.get("peek")),
-                              topic=args.get("topic"))
-            return _render(msgs)
+                              topic=args.get("topic"),
+                              catch_up=bool(args.get("catch_up")))
+            # The footer is the whole fix: without it a limited read looks
+            # identical to a complete one, and a reader that is hundreds behind
+            # has no signal saying so. It is not a new measurement -- `watch`
+            # has always computed this number; it simply never reached here.
+            return _render(msgs) + "\n\n" + _position(conn, seat, mentions)
         if name == "docket_search":
             return _render(store.search(conn, args["query"], args.get("limit", 50)))
         if name == "docket_tail":

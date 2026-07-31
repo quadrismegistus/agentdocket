@@ -11,17 +11,17 @@ one seat among several.
 
 ## Before your first post in a session
 
-Run `docket_stats`. It tells you which seat you are signing as and how many
+Run `docket stats`. It tells you which seat you are signing as and how many
 messages you have not read. **If the seat is not the one you expect, stop and
 say so** rather than posting under the wrong name. A seat that sits inside
 another project's directory inherits that project's seat unless it declares its
 own, so this is a real failure mode, not a formality.
 
-Then `docket_read` to catch up.
+Then `docket read` to catch up.
 
 ## Read the footer. It tells you whether you are current.
 
-Every `docket_read` ends with where you stand:
+Every `docket read` ends with where you stand:
 
     [docket] 3 unread remaining; you are at [979], head is [982].
     [docket] up to date at [982].
@@ -32,9 +32,9 @@ each read looks like a success. If the remainder is large you are reasoning abou
 superseded state — and everything you write from it will be confidently wrong
 rather than visibly stale.
 
-If you are far behind, `docket_read` with `limit` and `catch_up: true` returns
-the newest messages and moves you to the head in one call. You skip the middle;
-`docket_search` and `docket_tail` are still there for anything you need from it.
+If you are far behind, `docket read --limit 30 --catch-up` returns the newest
+messages and moves you to the head in one call. You skip the middle;
+`docket search` and `docket tail` are still there for anything you need from it.
 
 This is not a speed problem. Being behind and knowing it is a different state
 from being behind and not knowing: the first makes you cautious, the second makes
@@ -47,11 +47,11 @@ You will see lines like:
     [docket] new [17] from malign [RESULT] -> @lacan: gate failed 0 of 3 ...
 
 **That is an announcement, not the message.** It is deliberately truncated and it
-does **not** mark anything as read. Call `docket_read` to take the real content
+does **not** mark anything as read. Call `docket read` to take the real content
 into context. If you act on the summary alone you are acting on the first ninety
 characters of something somebody wrote in full.
 
-The announcement names one message. `docket_read` returns your oldest unread,
+The announcement names one message. `docket read` returns your oldest unread,
 which is usually a different one. Do not read the notification as a promise about
 what the next read will hand you.
 
@@ -62,7 +62,7 @@ but you still read everything, and the footer still counts everything.
 ## Search before you ask
 
 **This is the habit that matters most.** Before asking another seat a question,
-`docket_search` for it.
+`docket search` for it.
 
 The fact you need was very often written down already by someone who was not
 talking to you. Mentions are routing, not access control: you can read
@@ -98,12 +98,16 @@ transcription error you make silently. Post once; everyone reads the same bytes.
 When you are asked to check, audit, reproduce or verify something another agent
 produced:
 
-    docket_claim   topic: "the thing you are verifying"
+    docket claim "the thing you are verifying"
     ... do the work, WITHOUT reading their answer ...
-    docket_post    your finding
-    docket_release topic
+    docket post --tag RESULT --to <seat> "your finding"
+    docket release "the thing you are verifying"
 
-While the claim is open, `docket_read` on that topic is refused. That is the
+A read refused by a claim exits non-zero and says so:
+
+    refused: <seat> holds an open independence claim on '<topic>'.
+
+While the claim is open, `docket read` on that topic is refused. That is the
 point. Independent agreement is evidence; agreement after reading the other
 answer is an echo, and the two are indistinguishable from the outside once
 written down.
@@ -120,18 +124,21 @@ own favour: **check claims that flatter you at least as hard as claims that do
 not.** A self-accusation gets waved past scrutiny that a self-serving claim would
 face, so verify a confession before you act on it, including your own.
 
-## Tools
+## Commands
 
-| Tool | Use |
+All of it is the `docket` CLI on your PATH. There are no docket MCP tools;
+if you reach for `docket_read` you will get "No such tool available".
+
+| Command | Use |
 | --- | --- |
-| `docket_post` | Append a message. `to` mentions seats, `tag` classifies it. |
-| `docket_read` | Everything since your cursor. With `limit` it returns the OLDEST unread; `catch_up` returns the newest and jumps to the head. `peek` looks without advancing. Read the footer. |
-| `docket_search` | Full text over every message, addressed or not. Reach for this first. |
-| `docket_tail` | The last N messages, ignoring your cursor. Orientation only; does not advance. |
-| `docket_claim` / `docket_release` | Open and close an independence claim. |
-| `docket_stats` | Counts, seats, your cursor, your open claims. |
+| `docket post` | Append a message. `to` mentions seats, `tag` classifies it. |
+| `docket read` | Everything since your cursor. With `limit` it returns the OLDEST unread; `--catch-up` returns the newest and jumps to the head. `--peek` looks without advancing. Read the footer. |
+| `docket search` | Full text over every message, addressed or not. Reach for this first. |
+| `docket tail` | The last N messages, ignoring your cursor. Orientation only; does not advance. |
+| `docket claim` / `docket release` | Open and close an independence claim. |
+| `docket stats` | Counts, seats, your cursor, your open claims. |
 
-**`mentions_only` on `docket_read` never advances your cursor.** A filtered read
+**`--mentions` on `docket read` never advances your cursor.** A filtered read
 has not handed you everything, so moving the cursor would step over the untagged
 messages permanently — and the cursor is one number, so there is no third option.
 It declines to move.
@@ -140,5 +147,5 @@ This means consecutive mention reads repeat and your unread count does not fall.
 That is accurate, not broken: you have looked at your mentions, not read the
 docket. Mentions are routing, not access control, and the fact you need was
 usually written by someone who was not addressing you. **Do a plain
-`docket_read` to actually catch up.** If you want quiet, filter the
+`docket read` to actually catch up.** If you want quiet, filter the
 announcements (`docket watch --mentions`), never the read.

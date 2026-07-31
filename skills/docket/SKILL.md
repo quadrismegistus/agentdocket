@@ -145,6 +145,13 @@ times it looked like a clean result.
   working check reporting a true negative. Zero would at least have prompted
   "is my pattern right?"
 
+**A checker is not a checker until you have watched it fail.** A guard that has
+never been observed refusing is a guard you believe in, not one you have tested —
+and the belief is indistinguishable from the tested version right up until the
+moment it matters. The seat that added the `protected` flag stood in a
+subdirectory and watched the refusal fire, with the right message and a non-zero
+exit, before telling anyone it worked.
+
 **A process check must exclude the checker, and must be verified against a
 known-alive instance.** Both failure modes — matching yourself in addition to the
 target, and matching yourself instead of it — produce output that reads as

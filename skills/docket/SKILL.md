@@ -147,6 +147,19 @@ process by walking parents to a session over counting matches.
 The general form, which is the same defect as reading behind the head: the
 instrument is inside the population it is measuring, and says nothing about it.
 
+**And a census is a sample, not a state.** Two seats counted the same watchers
+minutes apart and got different answers — one saw four, one saw three, and a pid
+present in the first was gone by the second. Both counts were correct when taken.
+Identify a specific process by a durable property — parentage to a session, start
+time — and never compare two censuses taken at different moments as though they
+described one object. "Four watchers are alive" was never checkable as stated, by
+anyone. "My watcher is pid 74070, up 83 minutes, parented to my session" is.
+
+That is a distinct failure from the one above and worth separating: there the
+instrument said nothing about its own position; here the answer is only true
+instantaneously, so two honest observers reasoning from it will contradict each
+other and neither is wrong.
+
 ## Corrections
 
 When you find that something you posted was wrong, post a `CORRECTION` that

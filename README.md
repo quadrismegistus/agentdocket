@@ -67,35 +67,58 @@ Enforced in the store, not requested in a convention.
 
 ## Install
 
-### As a Claude Code plugin (nothing to install)
+### Recommended: the CLI, plus a skill that teaches it
 
-    /plugin marketplace add quadrismegistus/agentdocket
-    /plugin install agentdocket@agentdocket
-    /reload-plugins
+    uv tool install --editable .     # or: pipx install -e .
+    ln -s "$PWD/skills/docket" ~/.claude/skills/docket
 
-That is everything. The plugin ships the Python package and runs it in place, so
-there is no `pip install` step and no dependency to resolve. You get the seven
-tools and a skill telling Claude how to use them well.
+Gives you `docket` on your PATH and a skill telling Claude how to use it well.
+Python 3.10+, no dependencies, not a compiled binary — a console-script launcher.
 
 Then name the seat in each project that takes part:
 
     echo lacan > .docket-seat
 
-### As a command line tool
+**Use `--editable`.** A plain `uv tool install agentdocket` freezes a copy at
+install time, which silently reproduces the staleness this section exists to
+avoid — and you will not see the difference until the code moves. Check with
+`python3 -c "import agentdocket; print(agentdocket.__file__)"`: it should resolve
+inside your working tree, not inside the tool venv.
 
-    uv tool install --editable .     # or: pipx install -e .
+**Why the CLI rather than the MCP server.** A CLI process is spawned fresh for
+every call, so it cannot be stale. An MCP server is long-lived and keeps whatever
+it imported at launch, so it is always *potentially* stale, and the staleness is
+invisible from inside the session using it. See
+[But a symlink fixes file staleness, not process staleness](#but-a-symlink-fixes-file-staleness-not-process-staleness)
+— that failure cost this project two days: seats ran Wednesday-morning code
+against a repo that had moved, and nothing anywhere said so.
 
-Gives you `docket` and `docket-mcp`. Neither is a compiled binary; they are
-console-script launchers. Python 3.10+, no dependencies.
+The CLI reaches every capability, including refusal of reads under an open
+independence claim, which exits non-zero and says why.
 
-Use this if you want the CLI, or if you are wiring the MCP server into something
-that is not Claude Code:
+### As a Claude Code plugin
+
+    /plugin marketplace add quadrismegistus/agentdocket
+    /plugin install agentdocket@agentdocket
+    /reload-plugins
+
+Ships the package and runs it in place — no `pip install`, no dependency to
+resolve — and registers seven MCP tools plus the skill.
+
+Convenient, and it carries the cost above: the plugin cache is a **copy**, so a
+change in your working tree does not reach it until you copy it across, kill the
+server, and reload in every session. If you develop on this repo at all, prefer
+the CLI install.
+
+### Wiring the MCP server into something else
 
     claude mcp add --scope user docket -- docket-mcp
 
 ## Use as an MCP server
 
-Agents call tools instead of typing into each other's terminals.
+Optional. The tools mirror the commands one for one, and everything below about
+seats, delivery and claims applies either way. Read
+[Install](#install) first for why the CLI is the recommended path.
 
 **Register once, for every project:**
 
@@ -220,6 +243,20 @@ Any folder there containing `.claude-plugin/plugin.json` loads as
 **discovered in place rather than copied**, so the files on disk are always
 current. No version bumps, no publish loop, no `--plugin-dir` flag on every
 launch.
+
+**What you symlink decides what you get, and the difference is a running
+process.** Symlinking the repository *root* gives you a plugin, because the root
+carries `.claude-plugin/plugin.json` — and a plugin brings an MCP server, which
+is a long-lived process and therefore the staleness described below. Symlinking
+the *skill directory* gives you a skill and nothing else:
+
+    ln -s /path/to/agentdocket        ~/.claude/skills/agentdocket   # plugin + MCP server
+    ln -s /path/to/agentdocket/skills/docket ~/.claude/skills/docket # skill only, no server
+
+The second has no process to go stale. The agent reads the skill, runs `docket`
+from its shell, and every invocation imports the working tree as it is now.
+**This repository's own agents run the second way**; the first is kept for people
+who want the tools.
 
 ### But a symlink fixes file staleness, not process staleness
 

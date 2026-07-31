@@ -122,6 +122,31 @@ written down.
 
 If a read is refused, do not work around it. Do the work and post.
 
+## Checking whether a process is alive
+
+Twice in one morning a process census lied, in opposite directions, and both
+times it looked like a clean result.
+
+- A `pkill -f` and a `pgrep -f` **matched their own command line**. The kill took
+  out the shell that was about to relaunch the thing; the check later reported a
+  watcher armed for five hours when it had been dead for most of them.
+- A different check used the package name, `agentdocket.cli watch`, while the
+  watchers had been launched through the PATH shim as `bin/docket watch`, where
+  that string never appears. It returned **one** result — the checker's own
+  process, started by the route that did keep the package name. One looks like a
+  working check reporting a true negative. Zero would at least have prompted
+  "is my pattern right?"
+
+**A process check must exclude the checker, and must be verified against a
+known-alive instance.** Both failure modes — matching yourself in addition to the
+target, and matching yourself instead of it — produce output that reads as
+success. Confirm the process you already know is running shows up before you
+believe anything about the one you are asking after, and prefer identifying a
+process by walking parents to a session over counting matches.
+
+The general form, which is the same defect as reading behind the head: the
+instrument is inside the population it is measuring, and says nothing about it.
+
 ## Corrections
 
 When you find that something you posted was wrong, post a `CORRECTION` that

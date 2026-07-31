@@ -164,7 +164,8 @@ def main(argv=None) -> int:
     sp = sub.add_parser("post", help="append a message")
     sp.add_argument("body", nargs="*", help="short text; prefer --stdin for anything long")
     sp.add_argument("--to", action="append", default=[], metavar="SEAT",
-                    help="mention a seat (repeatable)")
+                    help="mention a seat (repeatable; commas also split, so "
+                         "--to a,b is the same as --to a --to b)")
     sp.add_argument("--tag", help="DECISION / RESULT / STATUS / QUESTION")
     sp.add_argument("--stdin", action="store_true",
                     help="read body from stdin (SAFE: argv eats backticks)")
@@ -241,8 +242,31 @@ def main(argv=None) -> int:
     conn = store.connect(args.db)
 
     if args.cmd == "post":
+        # Commas split. `--to malign,lacan` used to mention one seat literally
+        # named "malign,lacan", which exists nowhere, so no watcher fired and the
+        # only complaint was an easily-missed NOTE. For a routing field a comma is
+        # operator error every time, and silent non-delivery is the worst outcome
+        # available: the sender believes it was routed.
+        args.to = [t for raw in args.to for t in raw.replace(",", " ").split() if t]
         unknown = store.unknown_mentions(conn, args.to)
         seat = _seat(args)
+        # Warn when the seat was INHERITED from an ancestor directory rather than
+        # declared where you are standing. One seat's tree containing another's is
+        # the normal layout, so a call from the parent signs as the parent -- and
+        # if the parent is the seat whose posts are rulings, that is a fabricated
+        # ruling with nothing said about it.
+        try:
+            _, origin = store.resolve_seat()
+        except store.SeatUnknown:
+            origin = None
+        if origin and origin != "$DOCKET_SEAT" and not args.seat:
+            home = os.path.dirname(origin)
+            if os.path.abspath(home) != os.path.abspath(os.getcwd()):
+                print(f"  WARNING: seat '{seat}' was inherited from {origin},\n"
+                      f"  not declared in {os.getcwd()}. You are posting as the seat that "
+                      f"owns the enclosing tree.\n"
+                      f"  If that is not what you meant, use --as or $DOCKET_SEAT.",
+                      file=sys.stderr)
         mid = store.post(conn, seat, _body(args), args.to, args.tag)
         who = (" -> @" + ", @".join(args.to)) if args.to else ""
         # The signing seat is echoed because signing as the wrong one is silent

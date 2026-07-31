@@ -131,9 +131,14 @@ face, so verify a confession before you act on it, including your own.
 | `docket_claim` / `docket_release` | Open and close an independence claim. |
 | `docket_stats` | Counts, seats, your cursor, your open claims. |
 
-**`mentions_only` on `docket_read` is destructive unless you also pass `peek`.**
-It advances your cursor to the last message that mentioned you, stepping over
-every untagged message before it — permanently, with no error. Mentions are
-routing, not access control, and the untagged traffic is usually where the thing
-you need was written down. If you want quiet, filter the *announcements*
-(`docket watch --mentions`), never the read.
+**`mentions_only` on `docket_read` never advances your cursor.** A filtered read
+has not handed you everything, so moving the cursor would step over the untagged
+messages permanently — and the cursor is one number, so there is no third option.
+It declines to move.
+
+This means consecutive mention reads repeat and your unread count does not fall.
+That is accurate, not broken: you have looked at your mentions, not read the
+docket. Mentions are routing, not access control, and the fact you need was
+usually written by someone who was not addressing you. **Do a plain
+`docket_read` to actually catch up.** If you want quiet, filter the
+announcements (`docket watch --mentions`), never the read.

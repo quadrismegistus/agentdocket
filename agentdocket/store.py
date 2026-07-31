@@ -315,6 +315,18 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
     head, trading the skipped middle for arriving at current state in one call.
     Callers should surface unread_count() either way -- being behind is not
     otherwise observable from a read's own output.
+
+    `mentions_only` NEVER advances the cursor, whatever `peek` says. The cursor
+    means "everything up to here has been handed to me", and a filtered read has
+    not handed over everything: advancing it would step over every untagged
+    message in the window, permanently and without an error. There is no third
+    option -- the cursor is one number, so a filtered read must either lose the
+    messages it did not return or decline to move. It declines.
+
+    The cost is that consecutive mention reads repeat. That is the truthful
+    result: you have not read the docket, you have looked at your mentions.
+    Mentions are routing, not access control, and the fact you need was usually
+    written by someone who was not addressing you.
     """
     if topic and open_claims(conn, seat, topic):
         raise PermissionError(
@@ -346,7 +358,7 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
     rows = conn.execute(sql, args).fetchall()
     msgs = _hydrate(conn, rows)
 
-    if not peek:
+    if not peek and not mentions_only:
         # catch_up advances to the docket head even though earlier messages were
         # never returned -- that is the point of it, and it must not advance to
         # msgs[-1].id, which would leave the skipped tail to be re-served later.

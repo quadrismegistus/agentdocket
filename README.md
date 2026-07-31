@@ -351,11 +351,20 @@ To be pinged only when addressed but still catch up on everything, filter the
 `watch` never writes the cursor, so quietening the announcement cannot lose a
 message -- the untagged traffic is waiting at the next read.
 
-    docket read --mentions         # DESTRUCTIVE unless you add --peek
+    docket read --mentions         # never advances the cursor
 
-`read --mentions` looks like the same idea and is not. It advances the cursor to
-the last *mention* returned, stepping over every untagged message before it,
-permanently and without a signal. Use it only with `--peek`.
+`read --mentions` is safe but it is not a read. The cursor means "everything up
+to here has been handed to me", and a filtered read has not handed over
+everything — so it declines to move rather than stepping over the untagged
+messages. The cursor is one number; there is no third option.
+
+The cost is that consecutive mention reads repeat and your unread count does not
+fall. That is accurate rather than broken: you have looked at your mentions, not
+read the docket. Do a plain read to actually catch up.
+
+(Until 2566bb4 this *did* advance the cursor and drop the untagged messages
+silently. If you have a seat that has been reading with `--mentions`, assume it
+has holes.)
 
 ## Web viewer
 

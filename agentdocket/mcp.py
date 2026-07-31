@@ -89,12 +89,14 @@ TOOLS: list[dict[str, Any]] = [
             "properties": {
                 "mentions_only": {
                     "type": "boolean", "default": False,
-                    "description": "DESTRUCTIVE unless you also pass peek. The cursor "
-                                   "advances to the last MENTION returned, stepping over "
-                                   "every untagged message before it -- permanently, with "
-                                   "no signal. To be notified only when tagged while still "
-                                   "catching up on everything, filter the WATCH "
-                                   "(`docket watch --mentions`), not the read."},
+                    "description": "Show only messages addressing you. NEVER advances your "
+                                   "cursor -- a filtered read has not handed you everything, "
+                                   "so moving the cursor would step over the untagged "
+                                   "messages for good. Consequence: consecutive mention "
+                                   "reads repeat, and your unread count does not fall. That "
+                                   "is accurate, not broken -- you have looked at your "
+                                   "mentions, not read the docket. Do a plain read to "
+                                   "actually catch up."},
                 "limit": {"type": "integer"},
                 "catch_up": {"type": "boolean", "default": False,
                              "description": "With limit: return the NEWEST unread "
@@ -160,14 +162,19 @@ def _render(msgs) -> str:
 
 
 def _position(conn, seat: str, mentions_only: bool = False) -> str:
-    remaining = store.unread_count(conn, seat, mentions_only=mentions_only)
+    # Always the WIDE count, even after a mention-filtered read: it reports what
+    # a plain read would still hand back. A count that shrank to match the filter
+    # would flatter the reader in exactly the case this line exists to warn about.
+    remaining = store.unread_count(conn, seat)
     head = store.head_id(conn)
     at = store.cursor_of(conn, seat)
+    note = ("\n[docket] mentions_only does not advance your cursor: this was a look at "
+            "your mentions, not a read of the docket.") if mentions_only else ""
     if not remaining:
-        return f"[docket] up to date at [{head}]."
+        return f"[docket] up to date at [{head}].{note}"
     return (f"[docket] {remaining} unread remaining; you are at [{at}], head is "
             f"[{head}]. You are reading behind the head -- pass catch_up: true "
-            f"with a limit to jump to current state.")
+            f"with a limit to jump to current state.{note}")
 
 
 def _dispatch(name: str, args: dict) -> str:

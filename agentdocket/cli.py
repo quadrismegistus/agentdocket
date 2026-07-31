@@ -134,14 +134,21 @@ def position_line(conn, seat: str, *, mentions_only: bool = False) -> str:
     one cheap call -- but only if you already suspect it, which is precisely the
     reader who does not need telling. The number was already being computed by
     `watch`; it just never reached this path.
+
+    The count is always WIDE, even after a mention-filtered read. It reports what
+    a plain read would still hand back, which is the number that matters; a count
+    that shrank to match the filter would flatter the reader in exactly the
+    situation the footer exists to warn about.
     """
-    remaining = store.unread_count(conn, seat, mentions_only=mentions_only)
+    remaining = store.unread_count(conn, seat)
     head = store.head_id(conn)
     at = store.cursor_of(conn, seat)
+    note = ("\n[docket] --mentions does not advance your cursor: this was a look "
+            "at your mentions, not a read of the docket.") if mentions_only else ""
     if not remaining:
-        return f"[docket] up to date at [{head}]."
+        return f"[docket] up to date at [{head}].{note}"
     return (f"[docket] {remaining} unread remaining; you are at [{at}], "
-            f"head is [{head}]. Use --catch-up to jump to the head.")
+            f"head is [{head}]. Use --catch-up to jump to the head.{note}")
 
 
 def _show_position(conn, seat: str, *, mentions_only: bool = False) -> None:

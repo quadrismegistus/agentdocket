@@ -87,7 +87,14 @@ TOOLS: list[dict[str, Any]] = [
         "inputSchema": {
             "type": "object",
             "properties": {
-                "mentions_only": {"type": "boolean", "default": False},
+                "mentions_only": {
+                    "type": "boolean", "default": False,
+                    "description": "DESTRUCTIVE unless you also pass peek. The cursor "
+                                   "advances to the last MENTION returned, stepping over "
+                                   "every untagged message before it -- permanently, with "
+                                   "no signal. To be notified only when tagged while still "
+                                   "catching up on everything, filter the WATCH "
+                                   "(`docket watch --mentions`), not the read."},
                 "limit": {"type": "integer"},
                 "catch_up": {"type": "boolean", "default": False,
                              "description": "With limit: return the NEWEST unread "

@@ -44,7 +44,8 @@ def _body(args) -> str:
     sys.exit("error: no body. Use --stdin, --file PATH, or give text.")
 
 
-def _watch(conn, seat: str, interval: float, width: int) -> None:
+def _watch(conn, seat: str, interval: float, width: int,
+           mentions_only: bool = False) -> None:
     """Print one line per new message, forever. Used as a plugin monitor.
 
     A docket is a pull store: a message sits unread until somebody calls read,
@@ -53,7 +54,7 @@ def _watch(conn, seat: str, interval: float, width: int) -> None:
     the other side: the reader's session watches, so delivery does not depend on
     the writer doing anything.
 
-    Two deliberate choices:
+    Three deliberate choices:
 
     - IT DOES NOT ADVANCE THE CURSOR. Announcing a message is not reading it.
       If this consumed the cursor, the agent's own `read` would come back empty
@@ -61,22 +62,37 @@ def _watch(conn, seat: str, interval: float, width: int) -> None:
       announcement at all.
     - IT SKIPS YOUR OWN MESSAGES. Being notified of your own post is noise, and
       noise is what makes people stop reading notifications.
+    - `mentions_only` FILTERS THE ANNOUNCEMENT, NEVER THE READ. Because this
+      never writes the cursor, quietening the watch cannot lose a message: the
+      untagged traffic is still sitting there for the next `read`. Filtering the
+      READ instead -- `read(mentions_only=True)` -- looks equivalent and is not:
+      that advances the cursor to the last MENTION, stepping silently over every
+      untagged message before it, permanently. Notify narrow, read wide.
     """
     import time as _t
     store.touch_seat(conn, seat)   # arriving is enough to be addressable
     seen = conn.execute("SELECT COALESCE(MAX(id), 0) m FROM messages").fetchone()["m"]
     row = conn.execute("SELECT last_id FROM cursors WHERE seat=?", (seat,)).fetchone()
+    last_id = row["last_id"] if row else 0
+    # The count stays WIDE even when announcements are narrow: it describes what
+    # a read would hand back, and a read is not mention-filtered.
     unread = conn.execute(
         "SELECT COUNT(*) c FROM messages WHERE id > ? AND sender != ?",
-        (row["last_id"] if row else 0, seat)).fetchone()["c"]
+        (last_id, seat)).fetchone()["c"]
     if unread:
         print(f"[docket] {unread} unread message(s) waiting. Call docket_read.", flush=True)
 
+    if mentions_only:
+        sql = ("SELECT m.* FROM messages m JOIN mentions x ON x.message_id=m.id "
+               "WHERE m.id > ? AND m.sender != ? AND x.seat = ? ORDER BY m.id")
+        args_for = lambda s: (s, seat, seat)
+    else:
+        sql = "SELECT * FROM messages WHERE id > ? AND sender != ? ORDER BY id"
+        args_for = lambda s: (s, seat)
+
     while True:
         try:
-            rows = conn.execute(
-                "SELECT * FROM messages WHERE id > ? AND sender != ? ORDER BY id",
-                (seen, seat)).fetchall()
+            rows = conn.execute(sql, args_for(seen)).fetchall()
             for m in _hydrate_safe(conn, rows):
                 body = " ".join(m.body.split())
                 if len(body) > width:
@@ -84,9 +100,14 @@ def _watch(conn, seat: str, interval: float, width: int) -> None:
                 to = (" -> @" + ",".join(m.mentions)) if m.mentions else ""
                 tag = f" [{m.tag}]" if m.tag else ""
                 print(f"[docket] new [{m.id}] from {m.sender}{tag}{to}: {body}", flush=True)
-                seen = max(seen, m.id)
             if rows:
                 print("[docket] call docket_read to take these into context.", flush=True)
+            # Advance past everything CONSIDERED, not just everything announced.
+            # Under mentions_only the announced set is sparse, and marking only
+            # announced ids would leave the scan window growing without bound --
+            # re-reading the same untagged traffic on every tick forever.
+            seen = max(seen, conn.execute(
+                "SELECT COALESCE(MAX(id), 0) m FROM messages").fetchone()["m"])
         except Exception as e:  # a monitor that dies stops watching, silently
             print(f"[docket] watch error: {e}", flush=True)
         _t.sleep(interval)
@@ -174,6 +195,11 @@ def main(argv=None) -> int:
     sw = sub.add_parser("watch", help="announce new messages as they arrive (for plugin monitors)")
     sw.add_argument("--interval", type=float, default=5.0, help="seconds between checks")
     sw.add_argument("--width", type=int, default=90, help="body characters per line")
+    sw.add_argument("--mentions", action="store_true",
+                    help="announce only messages that mention you. Safe: watch never "
+                         "writes the cursor, so untagged traffic still arrives on your "
+                         "next read. Do NOT use read --mentions for this -- that DOES "
+                         "advance the cursor and drops the untagged messages for good.")
 
     sv = sub.add_parser("serve", help="web viewer (read-only)")
     sv.add_argument("--host", default="127.0.0.1",
@@ -245,7 +271,8 @@ def main(argv=None) -> int:
         got = store.open_claims(conn, _seat(args))
         print("\n".join(got) if got else "(none open)")
     elif args.cmd == "watch":
-        _watch(conn, _seat(args), args.interval, args.width)
+        _watch(conn, _seat(args), args.interval, args.width,
+               mentions_only=args.mentions)
     elif args.cmd == "serve":
         from .serve import serve as _serve
         _serve(args.db, args.host, args.port)

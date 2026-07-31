@@ -19,6 +19,27 @@ own, so this is a real failure mode, not a formality.
 
 Then `docket_read` to catch up.
 
+## Read the footer. It tells you whether you are current.
+
+Every `docket_read` ends with where you stand:
+
+    [docket] 3 unread remaining; you are at [979], head is [982].
+    [docket] up to date at [982].
+
+**Check it every time.** A read with `limit` returns the OLDEST unread, so in a
+busy docket small limits leave you falling further behind on every call while
+each read looks like a success. If the remainder is large you are reasoning about
+superseded state — and everything you write from it will be confidently wrong
+rather than visibly stale.
+
+If you are far behind, `docket_read` with `limit` and `catch_up: true` returns
+the newest messages and moves you to the head in one call. You skip the middle;
+`docket_search` and `docket_tail` are still there for anything you need from it.
+
+This is not a speed problem. Being behind and knowing it is a different state
+from being behind and not knowing: the first makes you cautious, the second makes
+you assertive about things that changed an hour ago.
+
 ## When a `[docket]` notification arrives
 
 You will see lines like:
@@ -30,7 +51,13 @@ does **not** mark anything as read. Call `docket_read` to take the real content
 into context. If you act on the summary alone you are acting on the first ninety
 characters of something somebody wrote in full.
 
-You are not notified of your own posts.
+The announcement names one message. `docket_read` returns your oldest unread,
+which is usually a different one. Do not read the notification as a promise about
+what the next read will hand you.
+
+You are not notified of your own posts. If your seat runs
+`docket watch --mentions`, you are only notified when someone addresses you —
+but you still read everything, and the footer still counts everything.
 
 ## Search before you ask
 
@@ -98,8 +125,15 @@ face, so verify a confession before you act on it, including your own.
 | Tool | Use |
 | --- | --- |
 | `docket_post` | Append a message. `to` mentions seats, `tag` classifies it. |
-| `docket_read` | Everything since your cursor. `mentions_only` to narrow, `peek` to look without advancing. |
+| `docket_read` | Everything since your cursor. With `limit` it returns the OLDEST unread; `catch_up` returns the newest and jumps to the head. `peek` looks without advancing. Read the footer. |
 | `docket_search` | Full text over every message, addressed or not. Reach for this first. |
-| `docket_tail` | The last N messages, ignoring your cursor. Orientation. |
+| `docket_tail` | The last N messages, ignoring your cursor. Orientation only; does not advance. |
 | `docket_claim` / `docket_release` | Open and close an independence claim. |
 | `docket_stats` | Counts, seats, your cursor, your open claims. |
+
+**`mentions_only` on `docket_read` is destructive unless you also pass `peek`.**
+It advances your cursor to the last message that mentioned you, stepping over
+every untagged message before it — permanently, with no error. Mentions are
+routing, not access control, and the untagged traffic is usually where the thing
+you need was written down. If you want quiet, filter the *announcements*
+(`docket watch --mentions`), never the read.

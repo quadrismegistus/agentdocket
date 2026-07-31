@@ -171,8 +171,8 @@ def _position(conn, seat: str, mentions_only: bool = False) -> str:
     note = ("\n[docket] mentions_only does not advance your cursor: this was a look at "
             "your mentions, not a read of the docket.") if mentions_only else ""
     if not remaining:
-        return f"[docket] up to date at [{head}].{note}"
-    return (f"[docket] {remaining} unread remaining; you are at [{at}], head is "
+        return f"[docket] {seat}: up to date at [{head}].{note}"
+    return (f"[docket] {seat}: {remaining} unread remaining; you are at [{at}], head is "
             f"[{head}]. You are reading behind the head -- pass catch_up: true "
             f"with a limit to jump to current state.{note}")
 
@@ -184,7 +184,7 @@ def _dispatch(name: str, args: dict) -> str:
             to = args.get("to") or []
             unknown = store.unknown_mentions(conn, to)
             mid = store.post(conn, _seat(), args["body"], to, args.get("tag"))
-            out = f"posted [{mid}]" + (" -> @" + ", @".join(to) if to else "")
+            out = f"posted [{mid}] as {_seat()}" + (" -> @" + ", @".join(to) if to else "")
             if unknown:
                 # Surfaced in the tool result rather than logged to stderr,
                 # because the model is the one who can act on it.

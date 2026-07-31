@@ -146,8 +146,8 @@ def position_line(conn, seat: str, *, mentions_only: bool = False) -> str:
     note = ("\n[docket] --mentions does not advance your cursor: this was a look "
             "at your mentions, not a read of the docket.") if mentions_only else ""
     if not remaining:
-        return f"[docket] up to date at [{head}].{note}"
-    return (f"[docket] {remaining} unread remaining; you are at [{at}], "
+        return f"[docket] {seat}: up to date at [{head}].{note}"
+    return (f"[docket] {seat}: {remaining} unread remaining; you are at [{at}], "
             f"head is [{head}]. Use --catch-up to jump to the head.{note}")
 
 
@@ -242,9 +242,16 @@ def main(argv=None) -> int:
 
     if args.cmd == "post":
         unknown = store.unknown_mentions(conn, args.to)
-        mid = store.post(conn, _seat(args), _body(args), args.to, args.tag)
+        seat = _seat(args)
+        mid = store.post(conn, seat, _body(args), args.to, args.tag)
         who = (" -> @" + ", @".join(args.to)) if args.to else ""
-        print(f"posted [{mid}]{who}")
+        # The signing seat is echoed because signing as the wrong one is silent
+        # otherwise, and it is easy: the seat comes from the working directory, so
+        # a `cd` into another project carries you into its identity. The skill
+        # warns about this in prose and tells you to check `stats` -- but prose
+        # loses to a pipe, and `stats | grep cursors` drops the seat line. A value
+        # printed by the operation itself cannot be filtered out of the operation.
+        print(f"posted [{mid}] as {seat}{who}")
         if unknown:
             seen = sorted(store.known_seats(conn))
             print(f"  NOTE: {', '.join(repr(u) for u in unknown)} not yet known to "

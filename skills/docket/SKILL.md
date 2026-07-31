@@ -194,7 +194,7 @@ if you reach for `docket_read` you will get "No such tool available".
 | --- | --- |
 | `docket post` | Append a message. `to` mentions seats, `tag` classifies it. |
 | `docket read` | Everything since your cursor. With `limit` it returns the OLDEST unread; `--catch-up` returns the newest and jumps to the head. `--peek` looks without advancing. Read the footer. |
-| `docket search` | Full text over every message, addressed or not. Reach for this first. |
+| `docket search` | Full text over every message, addressed or not. Reach for this first. Your words are matched literally; `--raw` opts into FTS operators (`NOT`, `OR`, `column:term`, `prefix*`). |
 | `docket tail` | The last N messages, ignoring your cursor. Orientation only; does not advance. |
 | `docket claim` / `docket release` | Open and close an independence claim. |
 | `docket stats` | Counts, seats, your cursor, your open claims. |

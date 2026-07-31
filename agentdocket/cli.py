@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import sys
 
 from . import store
@@ -192,6 +193,10 @@ def main(argv=None) -> int:
 
     ss = sub.add_parser("search", help="full text over every message")
     ss.add_argument("query", nargs="+")
+    ss.add_argument("--raw", action="store_true",
+                    help="pass the query to FTS5 verbatim, so operators like "
+                         "NOT, OR, column:term and prefix* work. Without this, "
+                         "your words are matched literally.")
     ss.add_argument("--width", type=int, default=0)
 
     sc = sub.add_parser("claim", help="open an independence claim on a topic")
@@ -314,7 +319,18 @@ def main(argv=None) -> int:
         _show(store.tail(conn, args.n_flag if args.n_flag is not None else args.n),
               args.width)
     elif args.cmd == "search":
-        _show(store.search(conn, " ".join(args.query)), args.width)
+        raw = " ".join(args.query)
+        q = raw if args.raw else store.fts_literal(raw)
+        if not q.strip():
+            sys.exit("error: empty search query.")
+        try:
+            _show(store.search(conn, q), args.width)
+        except sqlite3.OperationalError as e:
+            # Only reachable with --raw now. A bare sqlite traceback told the
+            # user nothing about which part of their query was a syntax error.
+            sys.exit(f"error: FTS query rejected: {e}\n"
+                     f"  You passed --raw, so operators are active. Drop --raw to "
+                     f"search for these words literally.")
     elif args.cmd == "claim":
         store.claim(conn, _seat(args), args.topic)
         print(f"claimed '{args.topic}'. Reads on it are refused until you release.")

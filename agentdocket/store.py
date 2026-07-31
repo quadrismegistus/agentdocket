@@ -412,6 +412,24 @@ def tail(conn: sqlite3.Connection, n: int = 20) -> list[Message]:
     return _hydrate(conn, rows)
 
 
+def fts_literal(query: str) -> str:
+    """Turn a user's words into an FTS5 query that means what they typed.
+
+    FTS5 MATCH is a little language: `-` negates, `x:y` filters by column, `*`
+    truncates, AND/OR/NOT are keywords. Passing raw input into it means a query
+    containing any of those characters either errors or, worse, quietly means
+    something else -- and hyphenated terms are ordinary here (seven-row, by-step,
+    two-seat), so this is the common case rather than an exotic one.
+
+    Each whitespace-separated token becomes a quoted FTS string, which is literal
+    text; the tokens are then implicitly ANDed, which is what a person typing
+    several words expects. Internal double quotes are escaped by doubling, per
+    FTS5's own rule.
+    """
+    toks = [t for t in query.split() if t]
+    return " ".join('"' + t.replace('"', '""') + '"' for t in toks)
+
+
 def search(conn: sqlite3.Connection, query: str, limit: int = 50) -> list[Message]:
     """Full text over every body, regardless of who was addressed.
 

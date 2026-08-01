@@ -167,7 +167,11 @@ def main(argv=None) -> int:
     sp.add_argument("--to", action="append", default=[], metavar="SEAT",
                     help="mention a seat (repeatable; commas also split, so "
                          "--to a,b is the same as --to a --to b)")
-    sp.add_argument("--tag", help="DECISION / RESULT / STATUS / QUESTION")
+    sp.add_argument("--tag", help="DECISION / RESULT / STATUS / QUESTION / COMMISSION")
+    sp.add_argument("--re", dest="in_reply_to", type=int, metavar="ID",
+                    help="this post answers message ID. Resolves what a post is "
+                         "replying to, which is half of why a crossed post reads "
+                         "as a disagreement. Also closes a COMMISSION.")
     sp.add_argument("--stdin", action="store_true",
                     help="read body from stdin (SAFE: argv eats backticks)")
     sp.add_argument("--file", help="read body from a file (SAFE)")
@@ -181,6 +185,8 @@ def main(argv=None) -> int:
                          "cursor to the head, skipping the middle")
     sr.add_argument("--topic", help="refuse if you hold an open claim on it")
     sr.add_argument("--width", type=int, default=0, help="truncate bodies for scanning")
+
+    sub.add_parser("commissions", help="open COMMISSION posts, oldest first")
 
     sh = sub.add_parser("show", help="fetch specific messages by id, in full")
     sh.add_argument("ids", nargs="+", type=int, metavar="ID")
@@ -292,7 +298,28 @@ def main(argv=None) -> int:
                       f"owns the enclosing tree.\n"
                       f"  If that is not what you meant, use --as or $DOCKET_SEAT.",
                       file=sys.stderr)
-        mid = store.post(conn, seat, _body(args), args.to, args.tag)
+        # Non-blocking, and deliberately so. Prohibiting a post until caught up
+        # fixes the wrong failure: not one crossing was costly because a post
+        # existed, they were costly because a reader could not tell a crossing
+        # from a disagreement. And a catch-up rule is least satisfiable exactly
+        # when the docket is busiest, so it would be routed around under load --
+        # which teaches that rules yield to tempo.
+        at, head = store.cursor_of(conn, seat), store.head_id(conn)
+        if head > at:
+            print(f"  NOTE: {head - at} message(s) have arrived since your last read "
+                  f"([{at}] -> [{head}]).\n"
+                  f"  This post will be marked composed against [{at}]. Posting anyway.",
+                  file=sys.stderr)
+        if args.in_reply_to:
+            if not store.by_ids(conn, [args.in_reply_to]):
+                sys.exit(f"error: --re [{args.in_reply_to}] does not exist. A citation "
+                         f"that does not resolve is worse than none.")
+            if args.in_reply_to > at:
+                # The two fields check each other for free.
+                print(f"  NOTE: replying to [{args.in_reply_to}], which arrived after "
+                      f"your last read at [{at}].", file=sys.stderr)
+        mid = store.post(conn, seat, _body(args), args.to, args.tag,
+                         in_reply_to=args.in_reply_to)
         who = (" -> @" + ", @".join(args.to)) if args.to else ""
         # The signing seat is echoed because signing as the wrong one is silent
         # otherwise, and it is easy: the seat comes from the working directory, so
@@ -319,6 +346,19 @@ def main(argv=None) -> int:
             _show_position(conn, seat, mentions_only=args.mentions)
         except PermissionError as e:
             sys.exit(f"refused: {e}")
+    elif args.cmd == "commissions":
+        open_ = store.open_commissions(conn)
+        if not open_:
+            print("(no open commissions)")
+        else:
+            head = store.head_id(conn)
+            for m in open_:
+                print(f"[{m.id}] {m.sender} -> @{','.join(m.mentions) or '(nobody)'}"
+                      f"   {head - m.id} messages have passed since")
+                print("  " + " ".join(m.body.split())[:100] + " ...")
+                print()
+            print(f"[docket] {len(open_)} open. Close one by answering it: "
+                  f"docket post --re <id> ...")
     elif args.cmd == "show":
         msgs = store.by_ids(conn, args.ids)
         found = {m.id for m in msgs}

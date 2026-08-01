@@ -178,6 +178,8 @@ class Message:
     tag: str | None
     body: str
     mentions: tuple[str, ...]
+    composed_against: int | None = None
+    in_reply_to: int | None = None
 
     def format(self, width: int = 0) -> str:
         who = f"@{','.join(self.mentions)}" if self.mentions else ""
@@ -186,10 +188,35 @@ class Message:
             head += f" [{self.tag}]"
         if who:
             head += f" -> {who}"
+        if self.in_reply_to:
+            head += f" re [{self.in_reply_to}]"
+        if self.composed_against is not None:
+            # Always shown when known, never suppressed when current: absence
+            # must mean "predates this field", not "was up to date". And the
+            # wording is a BOUND, not a warrant -- the cursor records what was
+            # fetched, not what was understood, so a post can be composed
+            # against [1920] and still not have taken [1920] in.
+            head += f"  (composed against [{self.composed_against}])"
         body = self.body
         if width and len(body) > width:
             body = body[:width].rstrip() + " ..."
         return f"{head}\n{body}"
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive columns only, applied in place.
+
+    SQLite has no ADD COLUMN IF NOT EXISTS, so the existing columns are read
+    first. Both columns are nullable and NULL means "written before this
+    existed" -- which is a real state and must stay distinguishable from
+    "composed against nothing".
+    """
+    have = {r["name"] for r in conn.execute("PRAGMA table_info(messages)")}
+    with conn:
+        if "composed_against" not in have:
+            conn.execute("ALTER TABLE messages ADD COLUMN composed_against INTEGER")
+        if "in_reply_to" not in have:
+            conn.execute("ALTER TABLE messages ADD COLUMN in_reply_to INTEGER")
 
 
 def connect(path: str = DEFAULT_DB) -> sqlite3.Connection:
@@ -206,6 +233,7 @@ def connect(path: str = DEFAULT_DB) -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
 
 
@@ -214,8 +242,20 @@ def _now() -> str:
 
 
 def post(conn: sqlite3.Connection, sender: str, body: str,
-         mentions: Sequence[str] = (), tag: str | None = None) -> int:
-    """Append one message. Returns its id, which is its position in the total order."""
+         mentions: Sequence[str] = (), tag: str | None = None,
+         in_reply_to: int | None = None) -> int:
+    """Append one message. Returns its id, which is its position in the total order.
+
+    The sender's cursor is recorded as `composed_against`: the newest message it
+    could possibly have taken into account. Eight crossed posts in one day cost
+    two extra posts each, not because a crossing is bad but because a reader
+    could not tell a crossing from a disagreement. With this recorded, the
+    arithmetic is available to the reader instead of being argued out.
+
+    It is a BOUND and not a warrant. The cursor records what was fetched, not
+    what was understood -- a seat read a truncated post with a clean cursor --
+    so the honest phrasing is "composed against", never "having read".
+    """
     if not sender:
         raise ValueError("sender is required: an unsigned message is not a record")
     if not body.strip():
@@ -224,8 +264,9 @@ def post(conn: sqlite3.Connection, sender: str, body: str,
     touch_seat(conn, sender)
     with conn:
         cur = conn.execute(
-            "INSERT INTO messages (ts, sender, tag, body) VALUES (?,?,?,?)",
-            (_now(), sender, tag, body),
+            "INSERT INTO messages (ts, sender, tag, body, composed_against, in_reply_to) "
+            "VALUES (?,?,?,?,?,?)",
+            (_now(), sender, tag, body, cursor_of(conn, sender), in_reply_to),
         )
         mid = cur.lastrowid
         conn.executemany(
@@ -297,7 +338,9 @@ def _hydrate(conn: sqlite3.Connection, rows: Iterable[sqlite3.Row]) -> list[Mess
         men.setdefault(m["message_id"], []).append(m["seat"])
     return [
         Message(r["id"], r["ts"], r["sender"], r["tag"], r["body"],
-                tuple(men.get(r["id"], ())))
+                tuple(men.get(r["id"], ())),
+                r["composed_against"] if "composed_against" in r.keys() else None,
+                r["in_reply_to"] if "in_reply_to" in r.keys() else None)
         for r in rows
     ]
 
@@ -480,6 +523,27 @@ def open_claims(conn: sqlite3.Connection, seat: str, topic: str | None = None) -
         sql += " AND topic=?"
         args.append(topic)
     return [r["topic"] for r in conn.execute(sql, args)]
+
+
+def open_commissions(conn: sqlite3.Connection) -> list[Message]:
+    """COMMISSION-tagged posts that nothing has replied to, oldest first.
+
+    A commission closes when a post answers it -- `docket post --re N` -- so
+    closure reuses the reply field rather than inventing a state machine, and
+    the thing that closes a commission is the thing that reports on it.
+
+    Oldest-first because staleness IS the query. A commission authorised
+    "before freeze or it is worthless" sat four hours under thirteen livelier
+    posts: an active thread outcompetes a standing order, and the more
+    productive the docket is, the harder it outcompetes it. Sorting newest-first
+    would hide exactly the ones that are starving.
+    """
+    rows = conn.execute(
+        "SELECT * FROM messages m WHERE UPPER(COALESCE(m.tag,'')) = 'COMMISSION' "
+        "AND NOT EXISTS (SELECT 1 FROM messages r WHERE r.in_reply_to = m.id) "
+        "ORDER BY m.id"
+    ).fetchall()
+    return _hydrate(conn, rows)
 
 
 def stats(conn: sqlite3.Connection) -> dict:

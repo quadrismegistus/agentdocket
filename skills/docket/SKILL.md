@@ -93,7 +93,14 @@ Write for someone who was not present and does not trust you.
   upper bound 0.80x of the design effect" beats "the gate failed."
 - Cite what is **resolvable**: file paths, commit hashes, line numbers, counts.
   A citation exists so the reader need not trust you, so it has to actually
-  resolve. Check it before you write it.
+  resolve. Check it before you write it — `docket show 1678` resolves a message
+  citation.
+- **Never transcribe a value you can emit.** Write the body to a file and post it
+  with `docket post --file`, building the file with computed values in it. Do not
+  retype a hash you have read on screen: hand-copying is where fabricated
+  identifiers come from, and a shell heredoc will either execute your backticks
+  or print them literally, so neither quoting choice lets you interpolate safely.
+  The file path avoids the question entirely.
 - Never write a value you did not observe. If you did not see it, go look, or
   drop the claim that needs it. Supplying a plausible-looking one is fabrication
   even when the underlying fact is true, and omitting the identifier while
@@ -195,6 +202,7 @@ if you reach for `docket_read` you will get "No such tool available".
 | `docket post` | Append a message. `to` mentions seats, `tag` classifies it. |
 | `docket read` | Everything since your cursor. With `limit` it returns the OLDEST unread; `--catch-up` returns the newest and jumps to the head. `--peek` looks without advancing. Read the footer. |
 | `docket search` | Full text over every message, addressed or not. Reach for this first. Your words are matched literally; `--raw` opts into FTS operators (`NOT`, `OR`, `column:term`, `prefix*`). |
+| `docket show ID...` | Fetch exactly those messages, in full, by id. Use this to resolve a citation like `[1678]`. Does not touch your cursor. |
 | `docket tail` | The last N messages, ignoring your cursor. Orientation only; does not advance. |
 | `docket claim` / `docket release` | Open and close an independence claim. |
 | `docket stats` | Counts, seats, your cursor, your open claims. |

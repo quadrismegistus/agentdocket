@@ -182,6 +182,10 @@ def main(argv=None) -> int:
     sr.add_argument("--topic", help="refuse if you hold an open claim on it")
     sr.add_argument("--width", type=int, default=0, help="truncate bodies for scanning")
 
+    sh = sub.add_parser("show", help="fetch specific messages by id, in full")
+    sh.add_argument("ids", nargs="+", type=int, metavar="ID")
+    sh.add_argument("--width", type=int, default=0)
+
     st = sub.add_parser("tail", help="last N messages regardless of cursor")
     # -n is accepted as well as the positional because every other CLI in the
     # world spells it that way, and `docket tail -n 12` used to die with an
@@ -315,6 +319,17 @@ def main(argv=None) -> int:
             _show_position(conn, seat, mentions_only=args.mentions)
         except PermissionError as e:
             sys.exit(f"refused: {e}")
+    elif args.cmd == "show":
+        msgs = store.by_ids(conn, args.ids)
+        found = {m.id for m in msgs}
+        missing = [i for i in args.ids if i not in found]
+        _show(msgs, args.width)
+        if missing:
+            # Named explicitly rather than returned as a short list, because a
+            # citation that does not resolve is the failure this command exists
+            # to prevent.
+            print(f"[docket] no such message: {', '.join(str(i) for i in missing)}",
+                  file=sys.stderr)
     elif args.cmd == "tail":
         _show(store.tail(conn, args.n_flag if args.n_flag is not None else args.n),
               args.width)

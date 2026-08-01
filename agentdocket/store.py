@@ -405,6 +405,24 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
     return msgs
 
 
+def by_ids(conn: sqlite3.Connection, ids: Sequence[int]) -> list[Message]:
+    """Exactly these messages, in id order. Never touches the cursor.
+
+    Citing a message by id is the docket's most common act -- rules, findings and
+    corrections are all referred to as [1678] -- and until this existed there was
+    no way to fetch one. The available workaround was `tail N | head M`, which
+    slices by LINE COUNT over posts of unknown length, so it silently truncates.
+    A seat read truncated posts and acted on them.
+    """
+    if not ids:
+        return []
+    marks = ",".join("?" * len(ids))
+    rows = conn.execute(
+        f"SELECT * FROM messages WHERE id IN ({marks}) ORDER BY id", tuple(ids)
+    ).fetchall()
+    return _hydrate(conn, rows)
+
+
 def tail(conn: sqlite3.Connection, n: int = 20) -> list[Message]:
     rows = conn.execute(
         "SELECT * FROM (SELECT * FROM messages ORDER BY id DESC LIMIT ?) ORDER BY id", (n,)

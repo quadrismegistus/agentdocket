@@ -186,7 +186,11 @@ def main(argv=None) -> int:
     sr.add_argument("--topic", help="refuse if you hold an open claim on it")
     sr.add_argument("--width", type=int, default=0, help="truncate bodies for scanning")
 
-    sub.add_parser("commissions", help="open COMMISSION posts, oldest first")
+    sc2 = sub.add_parser("commissions", help="open COMMISSION posts, oldest first")
+    sc2.add_argument("--closed", action="store_true",
+                     help="show closed ones instead, with the post that closed each "
+                          "-- so you can see whether it closed on a result, a refusal, "
+                          "or something that should not have closed it")
 
     sh = sub.add_parser("show", help="fetch specific messages by id, in full")
     sh.add_argument("ids", nargs="+", type=int, metavar="ID")
@@ -346,6 +350,17 @@ def main(argv=None) -> int:
             _show_position(conn, seat, mentions_only=args.mentions)
         except PermissionError as e:
             sys.exit(f"refused: {e}")
+    elif args.cmd == "commissions" and args.closed:
+        rows = store.closed_commissions(conn)
+        if not rows:
+            print("(no closed commissions)")
+        for c, k in rows:
+            first = " ".join(c.body.split())[:70]
+            closing = " ".join(k.body.split())[:70]
+            print(f"[{c.id}] {c.sender} -> @{','.join(c.mentions) or '(nobody)'}: {first} ...")
+            print(f"    closed by [{k.id}] {k.sender}"
+                  f"{' [' + k.tag + ']' if k.tag else ''}: {closing} ...")
+            print()
     elif args.cmd == "commissions":
         open_ = store.open_commissions(conn)
         if not open_:

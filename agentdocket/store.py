@@ -525,6 +525,35 @@ def open_claims(conn: sqlite3.Connection, seat: str, topic: str | None = None) -
     return [r["topic"] for r in conn.execute(sql, args)]
 
 
+def closed_commissions(conn: sqlite3.Connection) -> list[tuple[Message, Message]]:
+    """(commission, the post that closed it), newest closure first.
+
+    Any reply closes a commission, which is right for the failure observed --
+    zero replies -- and carries a residual risk nobody has hit yet: a status
+    reply ("running now, results within the hour") closes it, and if the results
+    never come that is starvation with a paper trail, worse than the original
+    because the list says closed.
+
+    So the closing post is shown rather than the closure asserted. The pen can
+    see whether "closed" meant a result, a refusal with a reason, or something
+    that should not have closed it -- without a second signal, a completion
+    state, or anything for a seat to remember.
+    """
+    rows = conn.execute(
+        "SELECT m.id AS cid, r.id AS rid FROM messages m "
+        "JOIN messages r ON r.in_reply_to = m.id "
+        "WHERE UPPER(COALESCE(m.tag,'')) = 'COMMISSION' "
+        "GROUP BY m.id HAVING r.id = MIN(r.id) ORDER BY r.id DESC"
+    ).fetchall()
+    out = []
+    for r in rows:
+        c = by_ids(conn, [r["cid"]])
+        k = by_ids(conn, [r["rid"]])
+        if c and k:
+            out.append((c[0], k[0]))
+    return out
+
+
 def open_commissions(conn: sqlite3.Connection) -> list[Message]:
     """COMMISSION-tagged posts that nothing has replied to, oldest first.
 

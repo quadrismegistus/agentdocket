@@ -314,6 +314,19 @@ def main(argv=None) -> int:
                   f"([{at}] -> [{head}]).\n"
                   f"  This post will be marked composed against [{at}]. Posting anyway.",
                   file=sys.stderr)
+        if (args.tag or "").upper() == "COMMISSION" and len(args.to) > 1:
+            # A commission has ONE id and any reply closes it, so a commission
+            # naming two seats has two results and one closure: the first seat to
+            # report closes the other seat's half out from under it. Caught live
+            # on a joint normalisation sweep, at no cost, because the pen reads
+            # the view. Emit-side and advisory -- the standing practice is one
+            # commission per seat, and this is that practice made mechanical
+            # where mechanism happens to be cheap.
+            print(f"  NOTE: this COMMISSION names {len(args.to)} seats "
+                  f"({', '.join(args.to)}). Any reply closes it, so the first "
+                  f"seat to report will close the others' halves too.\n"
+                  f"  Prefer one commission per seat. Posting anyway.",
+                  file=sys.stderr)
         if args.in_reply_to:
             if not store.by_ids(conn, [args.in_reply_to]):
                 sys.exit(f"error: --re [{args.in_reply_to}] does not exist. A citation "

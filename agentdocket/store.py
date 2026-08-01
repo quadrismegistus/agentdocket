@@ -217,6 +217,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute("ALTER TABLE messages ADD COLUMN composed_against INTEGER")
         if "in_reply_to" not in have:
             conn.execute("ALTER TABLE messages ADD COLUMN in_reply_to INTEGER")
+    scols = {r["name"] for r in conn.execute("PRAGMA table_info(seats)")}
+    if "seen_id" not in scols:
+        with conn:
+            conn.execute("ALTER TABLE seats ADD COLUMN seen_id INTEGER NOT NULL DEFAULT 0")
+            # Seed from the cursor: the only prior evidence of what a seat had
+            # laid eyes on. It understates for any seat that had been reading via
+            # show/tail, and self-corrects on that seat's next fetch.
+            conn.execute("UPDATE seats SET seen_id = COALESCE("
+                         "(SELECT last_id FROM cursors c WHERE c.seat = seats.seat), 0)")
 
 
 def connect(path: str = DEFAULT_DB) -> sqlite3.Connection:
@@ -266,7 +275,7 @@ def post(conn: sqlite3.Connection, sender: str, body: str,
         cur = conn.execute(
             "INSERT INTO messages (ts, sender, tag, body, composed_against, in_reply_to) "
             "VALUES (?,?,?,?,?,?)",
-            (_now(), sender, tag, body, cursor_of(conn, sender), in_reply_to),
+            (_now(), sender, tag, body, seen_of(conn, sender), in_reply_to),
         )
         mid = cur.lastrowid
         conn.executemany(
@@ -343,6 +352,34 @@ def _hydrate(conn: sqlite3.Connection, rows: Iterable[sqlite3.Row]) -> list[Mess
                 r["in_reply_to"] if "in_reply_to" in r.keys() else None)
         for r in rows
     ]
+
+
+def mark_seen(conn: sqlite3.Connection, seat: str, msgs: Iterable[Message]) -> None:
+    """Raise this seat's high-water mark of what it has laid eyes on.
+
+    THE CURSOR AND THIS ARE DIFFERENT QUESTIONS and conflating them produced a
+    false stamp within an hour of shipping one. The cursor answers "what should I
+    be handed next"; it must only advance over messages actually delivered in
+    order, which is why `show` and `tail` do not touch it -- `docket show 1950`
+    from a cursor at [100] would otherwise mark 1,849 unseen messages read.
+
+    This answers a different question: "what is the newest message this seat has
+    seen, by any route?" Every fetch path raises it. It only ever goes up, so
+    fetching an old message by id cannot lower it.
+    """
+    top = max((m.id for m in msgs), default=0)
+    if not top:
+        return
+    with conn:
+        conn.execute(
+            "INSERT INTO seats (seat, first_seen, last_seen, seen_id) VALUES (?,?,?,?) "
+            "ON CONFLICT(seat) DO UPDATE SET seen_id = MAX(seen_id, excluded.seen_id)",
+            (seat, _now(), _now(), top))
+
+
+def seen_of(conn: sqlite3.Connection, seat: str) -> int:
+    r = conn.execute("SELECT seen_id FROM seats WHERE seat=?", (seat,)).fetchone()
+    return (r["seen_id"] if r and r["seen_id"] is not None else 0)
 
 
 def head_id(conn: sqlite3.Connection) -> int:
@@ -432,6 +469,7 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
         sql = f"{body} ORDER BY {order}"
     rows = conn.execute(sql, args).fetchall()
     msgs = _hydrate(conn, rows)
+    mark_seen(conn, seat, msgs)
 
     if not peek and not mentions_only:
         # catch_up advances to the docket head even though earlier messages were

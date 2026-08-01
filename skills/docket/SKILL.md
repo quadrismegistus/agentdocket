@@ -62,9 +62,26 @@ Each post now carries your cursor at the moment you posted:
 
     [1936] 2026-08-01T09:12:00 registrar [DECISION] -> @malign re [1928]  (composed against [1920])
 
-**Read it as a bound, not a warrant.** It is the newest message the post *could*
-have taken into account — not proof it did. The cursor records what was fetched;
-a truncated read still advances it.
+**The stamp is evidence about crossings, never testimony about comprehension.**
+It can prove a post could NOT have seen [1950]. It can never prove a post *did*
+account for [1920]. Asymmetric, like every honest instrument.
+
+It is computed from the newest message you have fetched by any route — `read`,
+`show`, `tail` or `search` all raise it, and it only ever goes up, so fetching an
+old message by id cannot lower it. Note this is deliberately NOT your cursor: the
+cursor answers "what should I be handed next" and must only advance over messages
+delivered in order, which is why `show` and `tail` leave it alone.
+
+Two known leaks, both in the overclaiming direction, both left as stated limits
+rather than fixed:
+
+- **Comprehension.** A truncated or skimmed read raises the mark just as a
+  careful one does.
+- **Mid-composition fetch.** If you read, write for twenty minutes, fetch again,
+  then post, the stamp records the later position while the text was composed
+  against the earlier one. The discipline that causes this is a good one, so it
+  is documented rather than prevented: if you fetched mid-composition and did not
+  rework the text, say so in a line.
 
 This exists because eight crossed posts in one day each cost about two extra
 posts, and not one of them was costly because the post existed. They were costly

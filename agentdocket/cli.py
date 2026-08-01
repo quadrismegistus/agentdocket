@@ -308,7 +308,7 @@ def main(argv=None) -> int:
         # from a disagreement. And a catch-up rule is least satisfiable exactly
         # when the docket is busiest, so it would be routed around under load --
         # which teaches that rules yield to tempo.
-        at, head = store.cursor_of(conn, seat), store.head_id(conn)
+        at, head = store.seen_of(conn, seat), store.head_id(conn)
         if head > at:
             print(f"  NOTE: {head - at} message(s) have arrived since your last read "
                   f"([{at}] -> [{head}]).\n"
@@ -318,7 +318,8 @@ def main(argv=None) -> int:
             if not store.by_ids(conn, [args.in_reply_to]):
                 sys.exit(f"error: --re [{args.in_reply_to}] does not exist. A citation "
                          f"that does not resolve is worse than none.")
-            if args.in_reply_to > at:
+            tgt = store.by_ids(conn, [args.in_reply_to])[0]
+            if args.in_reply_to > at and tgt.sender != seat:
                 # The two fields check each other for free.
                 print(f"  NOTE: replying to [{args.in_reply_to}], which arrived after "
                       f"your last read at [{at}].", file=sys.stderr)
@@ -376,6 +377,7 @@ def main(argv=None) -> int:
                   f"docket post --re <id> ...")
     elif args.cmd == "show":
         msgs = store.by_ids(conn, args.ids)
+        store.mark_seen(conn, _seat(args), msgs)
         found = {m.id for m in msgs}
         missing = [i for i in args.ids if i not in found]
         _show(msgs, args.width)
@@ -386,15 +388,18 @@ def main(argv=None) -> int:
             print(f"[docket] no such message: {', '.join(str(i) for i in missing)}",
                   file=sys.stderr)
     elif args.cmd == "tail":
-        _show(store.tail(conn, args.n_flag if args.n_flag is not None else args.n),
-              args.width)
+        msgs = store.tail(conn, args.n_flag if args.n_flag is not None else args.n)
+        store.mark_seen(conn, _seat(args), msgs)
+        _show(msgs, args.width)
     elif args.cmd == "search":
         raw = " ".join(args.query)
         q = raw if args.raw else store.fts_literal(raw)
         if not q.strip():
             sys.exit("error: empty search query.")
         try:
-            _show(store.search(conn, q), args.width)
+            msgs = store.search(conn, q)
+            store.mark_seen(conn, _seat(args), msgs)
+            _show(msgs, args.width)
         except sqlite3.OperationalError as e:
             # Only reachable with --raw now. A bare sqlite traceback told the
             # user nothing about which part of their query was a syntax error.

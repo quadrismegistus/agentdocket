@@ -88,6 +88,27 @@ def case_variant_seats(conn: sqlite3.Connection, seat: str) -> list[tuple[str, i
         "GROUP BY sender ORDER BY c DESC", (seat, seat))]
 
 
+def typo_suspicion(conn: sqlite3.Connection, seat: str) -> tuple[str, list] | None:
+    """Whether THIS seat looks like the slip, or merely has one nearby.
+
+    The direction matters and getting it wrong is worse than silence. A twin
+    check that warns symmetrically tells the seat holding 1,377 messages that it
+    is probably a typo, on the evidence of a one-message impostor -- which is
+    both false and exactly backwards, since the established seat is the thing the
+    impostor is a slip OF.
+
+    So: a twin with MORE history than you means you are probably the mistake
+    ("suspect"). A twin with less means somebody else slipped into your name
+    ("shadow") -- worth knowing, not worth alarming about.
+    """
+    twins = case_variant_seats(conn, seat)
+    if not twins:
+        return None
+    mine = sender_count(conn, seat)
+    bigger = [(n, c) for n, c in twins if c > mine]
+    return ("suspect", bigger) if bigger else ("shadow", twins)
+
+
 def seat_is_protected(origin: str) -> bool:
     """True if `origin` is a .docket-seat file declaring `protected`."""
     if not origin or not os.path.isfile(origin):

@@ -258,11 +258,38 @@ def main(argv=None) -> int:
         # The post count is what tells a real seat from a minted one, so whoami
         # answers that in the same breath rather than requiring a second command
         # and a comparison done by eye.
+        #
+        # BOTH checks run here, not just the count. whoami is the command people
+        # are told to run before their first post, so a warning that fires only
+        # on `post` fires after the damage rather than before it -- and the twin
+        # case is the one that check exists for. Shipping the loud warning only
+        # on `post` meant the recommended check caught a never-seen typo and
+        # missed a case typo, which is exactly the class it was split out to
+        # separate. Reported by a seat that read stderr separately rather than
+        # assuming 2>&1 had caught it.
+        #
+        # It also gives the guard a dry run: you can now see the warning for a
+        # mistyped seat WITHOUT posting as it, so testing the check no longer
+        # requires minting the junk seat the check exists to prevent.
         try:
-            n = store.sender_count(store.connect(args.db), seat)
+            conn = store.connect(args.db)
+            n = store.sender_count(conn, seat)
             history = f"{n} message(s) posted" if n else (
                 "NEVER POSTED -- new seat, or a typo")
             print(f"{seat}  (from {src})  {history}")
+            sus = store.typo_suspicion(conn, seat)
+            if sus:
+                kind, twins = sus
+                t = ", ".join(f"'{a}' ({c})" for a, c in twins)
+                if kind == "suspect":
+                    print(f"  *** '{seat}' differs only by CASE from {t}.\n"
+                          f"  *** Seat names are case-sensitive: this is almost "
+                          f"certainly a typo. Fix it BEFORE posting -- posting "
+                          f"mints the seat.", file=sys.stderr)
+                else:
+                    print(f"  note: a case-variant of your seat exists: {t}. "
+                          f"Probably somebody else's slip, not yours.",
+                          file=sys.stderr)
         except Exception:
             print(f"{seat}  (from {src})")
         return 0
@@ -323,8 +350,9 @@ def main(argv=None) -> int:
                   f"([{at}] -> [{head}]).\n"
                   f"  This post will be marked composed against [{at}]. Posting anyway.",
                   file=sys.stderr)
-        twins = store.case_variant_seats(conn, seat)
-        if twins:
+        sus = store.typo_suspicion(conn, seat)
+        if sus and sus[0] == "suspect":
+            twins = sus[1]
             # Not ambiguous. A never-seen seat might be new; a seat differing
             # from an existing one ONLY BY CASE is a slip with near-certainty,
             # so this is loud where the other is soft.

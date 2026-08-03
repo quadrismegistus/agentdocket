@@ -58,6 +58,22 @@ def read_seat_file(path: str) -> tuple[str, set[str]]:
     return lines[0].lstrip("@"), {ln.lower() for ln in lines[1:]}
 
 
+def sender_count(conn: sqlite3.Connection, seat: str) -> int:
+    """How many messages this seat has ever posted.
+
+    The one number that distinguishes an established seat from a typo. A seat you
+    have been signing as for days has hundreds; a seat minted by a shift-key slip
+    has zero. `registrAr` sat in the sender list at 1, in plain sight, from the
+    moment it was created.
+
+    This is a check against DATA, not against attention: "confirm the seat you set
+    has your history" survives a busy day in a way that "read what you typed"
+    does not.
+    """
+    return conn.execute(
+        "SELECT COUNT(*) c FROM messages WHERE sender = ?", (seat,)).fetchone()["c"]
+
+
 def seat_is_protected(origin: str) -> bool:
     """True if `origin` is a .docket-seat file declaring `protected`."""
     if not origin or not os.path.isfile(origin):

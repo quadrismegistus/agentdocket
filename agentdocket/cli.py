@@ -253,9 +253,18 @@ def main(argv=None) -> int:
             return 0
         try:
             seat, src = store.resolve_seat()
-            print(f"{seat}  (from {src})")
         except store.SeatUnknown as e:
             sys.exit(f"error: {e}")
+        # The post count is what tells a real seat from a minted one, so whoami
+        # answers that in the same breath rather than requiring a second command
+        # and a comparison done by eye.
+        try:
+            n = store.sender_count(store.connect(args.db), seat)
+            history = f"{n} message(s) posted" if n else (
+                "NEVER POSTED -- new seat, or a typo")
+            print(f"{seat}  (from {src})  {history}")
+        except Exception:
+            print(f"{seat}  (from {src})")
         return 0
 
     conn = store.connect(args.db)
@@ -313,6 +322,19 @@ def main(argv=None) -> int:
             print(f"  NOTE: {head - at} message(s) have arrived since your last read "
                   f"([{at}] -> [{head}]).\n"
                   f"  This post will be marked composed against [{at}]. Posting anyway.",
+                  file=sys.stderr)
+        if store.sender_count(conn, seat) == 0:
+            # Seat identity is now believed absolutely wherever $DOCKET_SEAT is
+            # set, so a typo signs every call as somebody who may not exist and
+            # nothing downstream can notice -- the value IS the authority. The
+            # one thing that can disagree with it is the log: an established seat
+            # has history, a minted one has none. Fires once for a genuinely new
+            # seat, which is the right question to be asked once.
+            known = sorted(store.known_seats(conn))
+            print(f"  NOTE: '{seat}' has never posted to this docket.\n"
+                  f"  If this is not a new seat, check for a typo -- seat names are "
+                  f"case-sensitive, and a slip mints a seat rather than failing.\n"
+                  f"  Seats with history: {', '.join(known) or '(none)'}",
                   file=sys.stderr)
         if (args.tag or "").upper() == "COMMISSION" and len(args.to) > 1:
             # A commission has ONE id and any reply closes it, so a commission

@@ -186,6 +186,13 @@ def _show_position(conn, seat: str, *, mentions_only: bool = False) -> None:
 
 
 def main(argv=None) -> int:
+    # Handled before parsing: `cmd` is required, so argparse would reject a bare
+    # `docket --version` for want of a subcommand. A seat reached for it and got
+    # a usage error, which is a hint-vs-referent gap in the other direction --
+    # the obvious spelling of a thing that exists elsewhere.
+    if "--version" in (sys.argv[1:] if argv is None else argv):
+        print(f"agentdocket  source: {store.source_version()}")
+        return 0
     p = argparse.ArgumentParser(prog="docket", description="Shared log for coordinating agents.")
     p.add_argument("--db", default=store.DEFAULT_DB, help="store path")
     p.add_argument("--as", dest="seat", help="acting seat (else $DOCKET_SEAT)")
@@ -306,10 +313,24 @@ def main(argv=None) -> int:
         # requires minting the junk seat the check exists to prevent.
         try:
             conn = store.connect(args.db)
-            # Checking who you are is arriving. Recording it is what lets the
-            # OTHER party to a name collision find out it has one -- otherwise
-            # only the seat that showed up second can ever see the conflict.
-            store.touch_seat(conn, seat)
+            # DELIBERATELY DOES NOT RECORD PRESENCE. Checking a seat name used
+            # to create it, which made every verification run write permanently
+            # to a shared namespace -- three of us minted seats while testing the
+            # guard against minted seats.
+            #
+            # It was added to make the twin warning two-sided, and that reason was
+            # wrong: the ARRIVING seat is warned by the established seat being a
+            # SENDER, which needs no touching. Tested rather than assumed. What
+            # touching bought was one thing only -- telling an established seat
+            # about a twin that has NEVER POSTED, which is the cleanup half, not
+            # the prevention half, and covers exactly the seats that did no harm.
+            #
+            # It also removes the unattributable class outright. A sender row
+            # carries its author because a message has a sender; a touched row
+            # records only that a NAME WAS SEEN, so two agents reconstructed the
+            # same four rows in good faith and got incompatible answers. Every
+            # row that remains traces to a message with an owner, which is this
+            # project's own rule arriving where it had not reached.
             n = store.sender_count(conn, seat)
             history = f"{n} message(s) posted" if n else (
                 "NEVER POSTED -- new seat, or a typo")

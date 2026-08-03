@@ -117,10 +117,10 @@ def case_variant_seats(conn: sqlite3.Connection, seat: str) -> list[tuple[str, i
     holding 1,367 is a shift-key slip with near-certainty, and that shape was
     visible in `stats` from the moment it was minted.
     """
-    # Over every seat the docket has SEEN, not only those that have posted.
-    # Restricting to senders made the check one-sided: the seat that arrived
-    # second could see the conflict and the seat that arrived first could not,
-    # so the warning reached exactly one of the two parties to it.
+    # Over every seat the docket has seen, senders and presence rows alike. With
+    # presence no longer recorded by whoami, in practice this is the senders plus
+    # whatever the seats table already holds -- and a seat that has posted is the
+    # only kind that can have done harm.
     return [(r["seat"], r["c"]) for r in conn.execute(
         "SELECT s.seat AS seat, "
         "  (SELECT COUNT(*) FROM messages m WHERE m.sender = s.seat) AS c "

@@ -313,7 +313,7 @@ def main(argv=None) -> int:
             n = store.sender_count(conn, seat)
             history = f"{n} message(s) posted" if n else (
                 "NEVER POSTED -- new seat, or a typo")
-            print(f"{seat}  (from {src})  {history}")
+            print(f"{seat}  (from {src})  {history}\n  source: {store.source_version()}")
             _seat_warning(conn, seat)
         except Exception:
             print(f"{seat}  (from {src})")

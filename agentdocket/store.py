@@ -36,6 +36,41 @@ class SeatUnknown(RuntimeError):
     """No seat could be resolved. Never resolved by guessing."""
 
 
+_SOURCE_VERSION: str | None = None
+
+
+def source_version() -> str:
+    """Where this code came from, including whether it is mid-edit.
+
+    The package is normally an EDITABLE install, so every seat runs the author's
+    working tree with no artifact between editor and runtime -- no commit, no
+    version, no hash. In one evening the tool changed behaviour three times under
+    an unmoved version string, and `whoami` went from read-only to
+    presence-recording while three seats were using it as their verification
+    ritual. That was visible only because it happened to have a side effect.
+
+    So the tool reports its own provenance rather than asking readers to be
+    careful: a git description of the tree it was imported from, with `-dirty`
+    when that tree has uncommitted changes. "Your message and my install
+    disagree" becomes diagnosable instead of a rule about whom to believe.
+
+    Best-effort by design. No git, not a repo, or an installed copy all yield
+    "unknown" -- an unanswerable question should say so rather than guess.
+    """
+    global _SOURCE_VERSION
+    if _SOURCE_VERSION is None:
+        import subprocess
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        try:
+            r = subprocess.run(
+                ["git", "-C", root, "describe", "--always", "--dirty", "--tags"],
+                capture_output=True, text=True, timeout=3)
+            _SOURCE_VERSION = r.stdout.strip() if r.returncode == 0 else "unknown"
+        except Exception:
+            _SOURCE_VERSION = "unknown"
+    return _SOURCE_VERSION
+
+
 def read_seat_file(path: str) -> tuple[str, set[str]]:
     """Parse a .docket-seat file into (name, flags).
 

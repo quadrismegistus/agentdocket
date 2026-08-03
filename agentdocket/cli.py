@@ -323,7 +323,18 @@ def main(argv=None) -> int:
                   f"([{at}] -> [{head}]).\n"
                   f"  This post will be marked composed against [{at}]. Posting anyway.",
                   file=sys.stderr)
-        if store.sender_count(conn, seat) == 0:
+        twins = store.case_variant_seats(conn, seat)
+        if twins:
+            # Not ambiguous. A never-seen seat might be new; a seat differing
+            # from an existing one ONLY BY CASE is a slip with near-certainty,
+            # so this is loud where the other is soft.
+            t = ", ".join(f"'{n}' ({c})" for n, c in twins)
+            print(f"  *** '{seat}' differs only by CASE from {t}.\n"
+                  f"  *** Seat names are case-sensitive: this is almost certainly a "
+                  f"typo, and posting mints a seat rather than failing.\n"
+                  f"  *** Fix $DOCKET_SEAT or .docket-seat before posting again.",
+                  file=sys.stderr)
+        elif store.sender_count(conn, seat) == 0:
             # Seat identity is now believed absolutely wherever $DOCKET_SEAT is
             # set, so a typo signs every call as somebody who may not exist and
             # nothing downstream can notice -- the value IS the authority. The

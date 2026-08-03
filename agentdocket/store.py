@@ -74,6 +74,20 @@ def sender_count(conn: sqlite3.Connection, seat: str) -> int:
         "SELECT COUNT(*) c FROM messages WHERE sender = ?", (seat,)).fetchone()["c"]
 
 
+def case_variant_seats(conn: sqlite3.Connection, seat: str) -> list[tuple[str, int]]:
+    """Other seats whose names differ from `seat` only by case, with their counts.
+
+    A seat sitting beside a case-variant twin is not ambiguous the way a
+    never-seen seat is. `registrAr` holding one message next to `registrar`
+    holding 1,367 is a shift-key slip with near-certainty, and that shape was
+    visible in `stats` from the moment it was minted.
+    """
+    return [(r["sender"], r["c"]) for r in conn.execute(
+        "SELECT sender, COUNT(*) c FROM messages "
+        "WHERE LOWER(sender) = LOWER(?) AND sender != ? "
+        "GROUP BY sender ORDER BY c DESC", (seat, seat))]
+
+
 def seat_is_protected(origin: str) -> bool:
     """True if `origin` is a .docket-seat file declaring `protected`."""
     if not origin or not os.path.isfile(origin):

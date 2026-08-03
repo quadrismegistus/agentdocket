@@ -82,10 +82,31 @@ def case_variant_seats(conn: sqlite3.Connection, seat: str) -> list[tuple[str, i
     holding 1,367 is a shift-key slip with near-certainty, and that shape was
     visible in `stats` from the moment it was minted.
     """
-    return [(r["sender"], r["c"]) for r in conn.execute(
-        "SELECT sender, COUNT(*) c FROM messages "
-        "WHERE LOWER(sender) = LOWER(?) AND sender != ? "
-        "GROUP BY sender ORDER BY c DESC", (seat, seat))]
+    # Over every seat the docket has SEEN, not only those that have posted.
+    # Restricting to senders made the check one-sided: the seat that arrived
+    # second could see the conflict and the seat that arrived first could not,
+    # so the warning reached exactly one of the two parties to it.
+    return [(r["seat"], r["c"]) for r in conn.execute(
+        "SELECT s.seat AS seat, "
+        "  (SELECT COUNT(*) FROM messages m WHERE m.sender = s.seat) AS c "
+        "FROM (SELECT seat FROM seats UNION SELECT sender FROM messages) s "
+        "WHERE LOWER(s.seat) = LOWER(?) AND s.seat != ? "
+        "ORDER BY c DESC", (seat, seat))]
+
+
+def declare_ghost(conn: sqlite3.Connection, seat: str, ghost_of: str) -> None:
+    with conn:
+        conn.execute("INSERT OR REPLACE INTO ghosts (seat, ghost_of, declared) "
+                     "VALUES (?,?,?)", (seat, ghost_of, _now()))
+
+
+def ghost_of(conn: sqlite3.Connection, seat: str) -> str | None:
+    r = conn.execute("SELECT ghost_of FROM ghosts WHERE seat=?", (seat,)).fetchone()
+    return r["ghost_of"] if r else None
+
+
+def known_ghosts(conn: sqlite3.Connection) -> dict:
+    return {r["seat"]: r["ghost_of"] for r in conn.execute("SELECT * FROM ghosts")}
 
 
 def typo_suspicion(conn: sqlite3.Connection, seat: str) -> tuple[str, list] | None:
@@ -101,12 +122,27 @@ def typo_suspicion(conn: sqlite3.Connection, seat: str) -> tuple[str, list] | No
     ("suspect"). A twin with less means somebody else slipped into your name
     ("shadow") -- worth knowing, not worth alarming about.
     """
+    # A declared ghost is settled: say what it is a ghost OF and stop guessing.
+    of = ghost_of(conn, seat)
+    if of:
+        return ("declared", [(of, sender_count(conn, of))])
+
     twins = case_variant_seats(conn, seat)
     if not twins:
         return None
-    mine = sender_count(conn, seat)
-    bigger = [(n, c) for n, c in twins if c > mine]
-    return ("suspect", bigger) if bigger else ("shadow", twins)
+
+    # Twins already declared as ghosts of this seat are not a question about
+    # this seat. Once registrAr is declared, registrar stops being told anything.
+    ghosts = known_ghosts(conn)
+    undeclared = [(n, c) for n, c in twins if ghosts.get(n) != seat]
+    if not undeclared:
+        return None
+
+    # Nobody has declared anything, so nobody KNOWS which is the slip. Say that
+    # to both rather than picking the winner by traffic -- the count is a
+    # tiebreak, never the answer, and it inverts whenever a typo goes unnoticed
+    # long enough to out-post the seat it impersonates.
+    return ("ambiguous", undeclared)
 
 
 def seat_is_protected(origin: str) -> bool:
@@ -210,6 +246,21 @@ CREATE TABLE IF NOT EXISTS seats (
     seat       TEXT PRIMARY KEY,
     first_seen TEXT NOT NULL,
     last_seen  TEXT NOT NULL
+);
+
+-- Declared ghosts: seat names known to be slips of another seat. Legitimacy is
+-- a fact somebody KNOWS; it is not a fact the message counts encode. A count
+-- heuristic inverts the moment a typo goes unnoticed for a while -- the ghost
+-- accrues history, the real seat arrives at zero, and the warning fires at the
+-- legitimate newcomer telling it to abandon its own name.
+--
+-- A declaration sits BESIDE the ghost's messages and never rewrites them. The
+-- record is the evidence; the ruling that a message was mis-signed is a separate
+-- fact from the message.
+CREATE TABLE IF NOT EXISTS ghosts (
+    seat     TEXT PRIMARY KEY,
+    ghost_of TEXT NOT NULL,
+    declared TEXT NOT NULL
 );
 
 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts

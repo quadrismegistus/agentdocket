@@ -152,6 +152,35 @@ def position_line(conn, seat: str, *, mentions_only: bool = False) -> str:
             f"head is [{head}]. Use --catch-up to jump to the head.{note}")
 
 
+def _seat_warning(conn, seat: str) -> bool:
+    """Say what is known about this seat's name. Returns True if anything printed.
+
+    Three states, and the third is the one a count heuristic gets wrong. A
+    DECLARED ghost is settled. A twin already declared a ghost OF this seat is
+    somebody else's closed question. Otherwise nobody has declared anything, so
+    nobody knows which of the two is the slip -- and the honest output says so to
+    BOTH rather than choosing by traffic. Counts invert exactly when discovery
+    was slow, which is when help is most needed.
+    """
+    sus = store.typo_suspicion(conn, seat)
+    if not sus:
+        return False
+    kind, twins = sus
+    t = ", ".join(f"'{a}' ({c} msg)" for a, c in twins)
+    if kind == "declared":
+        print(f"  *** '{seat}' is a DECLARED GHOST of {t}.\n"
+              f"  *** You are signing as a seat somebody has already ruled a typo. "
+              f"Fix it BEFORE posting.", file=sys.stderr)
+    else:
+        mine = store.sender_count(conn, seat)
+        print(f"  ! '{seat}' ({mine} msg) differs only by CASE from {t}.\n"
+              f"  ! Seat names are case-sensitive, so one of these is a slip and "
+              f"nothing recorded says which.\n"
+              f"  ! Settle it: docket ghost <the-wrong-one> --of <the-right-one>",
+              file=sys.stderr)
+    return True
+
+
 def _show_position(conn, seat: str, *, mentions_only: bool = False) -> None:
     print(position_line(conn, seat, mentions_only=mentions_only))
 
@@ -185,6 +214,10 @@ def main(argv=None) -> int:
                          "cursor to the head, skipping the middle")
     sr.add_argument("--topic", help="refuse if you hold an open claim on it")
     sr.add_argument("--width", type=int, default=0, help="truncate bodies for scanning")
+
+    sg = sub.add_parser("ghost", help="declare a seat name a slip of another seat")
+    sg.add_argument("name", help="the mis-typed seat")
+    sg.add_argument("--of", dest="of", required=True, help="the seat it is a slip of")
 
     sc2 = sub.add_parser("commissions", help="open COMMISSION posts, oldest first")
     sc2.add_argument("--closed", action="store_true",
@@ -273,23 +306,15 @@ def main(argv=None) -> int:
         # requires minting the junk seat the check exists to prevent.
         try:
             conn = store.connect(args.db)
+            # Checking who you are is arriving. Recording it is what lets the
+            # OTHER party to a name collision find out it has one -- otherwise
+            # only the seat that showed up second can ever see the conflict.
+            store.touch_seat(conn, seat)
             n = store.sender_count(conn, seat)
             history = f"{n} message(s) posted" if n else (
                 "NEVER POSTED -- new seat, or a typo")
             print(f"{seat}  (from {src})  {history}")
-            sus = store.typo_suspicion(conn, seat)
-            if sus:
-                kind, twins = sus
-                t = ", ".join(f"'{a}' ({c})" for a, c in twins)
-                if kind == "suspect":
-                    print(f"  *** '{seat}' differs only by CASE from {t}.\n"
-                          f"  *** Seat names are case-sensitive: this is almost "
-                          f"certainly a typo. Fix it BEFORE posting -- posting "
-                          f"mints the seat.", file=sys.stderr)
-                else:
-                    print(f"  note: a case-variant of your seat exists: {t}. "
-                          f"Probably somebody else's slip, not yours.",
-                          file=sys.stderr)
+            _seat_warning(conn, seat)
         except Exception:
             print(f"{seat}  (from {src})")
         return 0
@@ -350,19 +375,8 @@ def main(argv=None) -> int:
                   f"([{at}] -> [{head}]).\n"
                   f"  This post will be marked composed against [{at}]. Posting anyway.",
                   file=sys.stderr)
-        sus = store.typo_suspicion(conn, seat)
-        if sus and sus[0] == "suspect":
-            twins = sus[1]
-            # Not ambiguous. A never-seen seat might be new; a seat differing
-            # from an existing one ONLY BY CASE is a slip with near-certainty,
-            # so this is loud where the other is soft.
-            t = ", ".join(f"'{n}' ({c})" for n, c in twins)
-            print(f"  *** '{seat}' differs only by CASE from {t}.\n"
-                  f"  *** Seat names are case-sensitive: this is almost certainly a "
-                  f"typo, and posting mints a seat rather than failing.\n"
-                  f"  *** Fix $DOCKET_SEAT or .docket-seat before posting again.",
-                  file=sys.stderr)
-        elif store.sender_count(conn, seat) == 0:
+        warned = _seat_warning(conn, seat)
+        if not warned and store.sender_count(conn, seat) == 0:
             # Seat identity is now believed absolutely wherever $DOCKET_SEAT is
             # set, so a typo signs every call as somebody who may not exist and
             # nothing downstream can notice -- the value IS the authority. The
@@ -425,6 +439,16 @@ def main(argv=None) -> int:
             _show_position(conn, seat, mentions_only=args.mentions)
         except PermissionError as e:
             sys.exit(f"refused: {e}")
+    elif args.cmd == "ghost":
+        if args.name == args.of:
+            sys.exit("error: a seat cannot be a ghost of itself.")
+        store.declare_ghost(conn, args.name, args.of)
+        n = store.sender_count(conn, args.name)
+        print(f"declared '{args.name}' a ghost of '{args.of}'.")
+        print(f"  Its {n} message(s) are untouched -- a declaration sits beside the "
+              f"record, it does not rewrite a sender.\n"
+              f"  '{args.of}' will no longer be warned about it; '{args.name}' now "
+              f"warns loudly and names what it is a ghost of.")
     elif args.cmd == "commissions" and args.closed:
         rows = store.closed_commissions(conn)
         if not rows:

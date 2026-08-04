@@ -232,6 +232,8 @@ def main(argv=None) -> int:
                           "-- so you can see whether it closed on a result, a refusal, "
                           "or something that should not have closed it")
 
+    sub.add_parser("skip", help="jump your cursor to the newest message without reading")
+
     sh = sub.add_parser("show", help="fetch specific messages by id, in full")
     sh.add_argument("ids", nargs="+", type=int, metavar="ID")
     sh.add_argument("--width", type=int, default=0)
@@ -494,6 +496,17 @@ def main(argv=None) -> int:
                 print()
             print(f"[docket] {len(open_)} open. Close one by answering it: "
                   f"docket post --re <id> ...")
+    elif args.cmd == "skip":
+        seat = _seat(args)
+        was, now, n = store.skip_to_head(conn, seat)
+        if not n:
+            print(f"[docket] {seat}: already at the head [{now}]. Nothing skipped.")
+        else:
+            print(f"[docket] {seat}: skipped {n} message(s), [{was}] -> [{now}].")
+            print(f"  You have NOT read them. They are still in the log -- "
+                  f"docket search, docket tail and docket show all ignore cursors.")
+            print(f"  Posts you make now are stamped 'composed against [{now}]', "
+                  f"which will say you could have seen them.")
     elif args.cmd == "show":
         msgs = store.by_ids(conn, args.ids)
         store.mark_seen(conn, _seat(args), msgs)

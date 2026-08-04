@@ -623,6 +623,29 @@ def read(conn: sqlite3.Connection, seat: str, *, mentions_only: bool = False,
     return msgs
 
 
+def skip_to_head(conn: sqlite3.Connection, seat: str) -> tuple[int, int, int]:
+    """Move this seat's cursor to the head without returning anything.
+
+    Returns (from_id, to_id, skipped) so the caller can say what was given up.
+    The count is the point: a cursor jump is a decision to not read something,
+    and a command that performs it silently would make the decision invisible
+    to the seat that made it and to anyone reading its later posts.
+
+    Nothing is deleted. `search`, `tail` and `show` all ignore cursors, so the
+    skipped messages remain reachable -- what is discarded is the queue, not
+    the record.
+    """
+    at, head = cursor_of(conn, seat), head_id(conn)
+    if head > at:
+        touch_seat(conn, seat)
+        with conn:
+            conn.execute(
+                "INSERT INTO cursors (seat, last_id) VALUES (?,?) "
+                "ON CONFLICT(seat) DO UPDATE SET last_id=excluded.last_id",
+                (seat, head))
+    return at, head, max(0, head - at)
+
+
 def by_ids(conn: sqlite3.Connection, ids: Sequence[int]) -> list[Message]:
     """Exactly these messages, in id order. Never touches the cursor.
 
